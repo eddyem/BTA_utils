@@ -1,0 +1,268 @@
+\documentclass[a4paper,12pt]{extarticle}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{/home/eddy/ed}
+\colorlet{punct}{red}
+\definecolor{delim}{RGB}{20,105,176}
+\colorlet{numb}{red!60!black}
+\lstdefinelanguage{JSON}{
+    basicstyle=\small\ttfamily,
+    numbers=left,
+    numberstyle=\scriptsize,
+    stepnumber=2,
+    numbersep=8pt,
+    showstringspaces=false,
+    breaklines=true,
+    frame=tbrL,
+    literate=
+     *{0}{{{\color{numb}0}}}{1}
+      {1}{{{\color{numb}1}}}{1}
+      {2}{{{\color{numb}2}}}{1}
+      {3}{{{\color{numb}3}}}{1}
+      {4}{{{\color{numb}4}}}{1}
+      {5}{{{\color{numb}5}}}{1}
+      {6}{{{\color{numb}6}}}{1}
+      {7}{{{\color{numb}7}}}{1}
+      {8}{{{\color{numb}8}}}{1}
+      {9}{{{\color{numb}9}}}{1}
+      {.}{{{\color{numb}.}}}{1}
+      {:}{{{\color{punct}{:}}}}{1}
+      {,}{{{\color{punct}{,}}}}{1}
+      {\{}{{{\color{delim}{\{}}}}{1}
+      {\}}{{{\color{delim}{\}}}}}{1}
+      {[}{{{\color{delim}{[}}}}{1}
+      {]}{{{\color{delim}{]}}}}{1},
+    morestring=[b]",
+    morestring=[b]',
+    extendedchars=true,
+    escapechar=`,
+    stringstyle=\bfseries\color[rgb]{0.6,0,1},
+    keywords={true,false},
+    keywordstyle=\bfseries\color[rgb]{0,0.1,0.5},
+    frameround=tttt
+}
+\lstset{basicstyle=\small,breaklines=true,
+	extendedchars=true,aboveskip=1em,belowcaptionskip=5pt,
+	prebreak = \hbox{%
+\normalfont\small\hfill\green{\ensuremath{\hookleftarrow}}},
+	postbreak = \hbox to 0pt{%
+\hss\normalfont\small\green{\ensuremath{\hookrightarrow}}\hspace{1ex}},
+	commentstyle=\color{blue},showspaces=false,
+	showstringspaces=false,stringstyle=\bfseries\color[rgb]{0.6,0,1},
+	numbers=left,numberstyle=\tiny,stepnumber=2,
+	keywordstyle=\bfseries\color[rgb]{0,0.1,0.5},
+	frameround=tttt,frame=trBL,tabsize=4,backgroundcolor=\color[rgb]{.9,.9,1}}
+\lstloadlanguages{JSON,C}
+\def\lstlistingname{Листинг}
+\def\lstref#1{(см.~листинг~\ref{#1})}
+\LTcapwidth=\textwidth
+
+\title{Вспомогательный сервис BTA-JSON}
+
+\begin{document}
+\nocolon
+\maketitle
+\section{Введение}
+Для осуществления возможности удаленного мониторинга состояния телескопа БТА (в
+т.ч. для заполнения стандартного заголовка FITS-файлов) на основе разработанной
+В.С.~Шергиным программы \verb'bta_print' был создан простой сетевой сервис,
+выдающий по запросу пользователя всю необходимую информацию в формате JSON.
+
+Необходимость создания данного сервиса была обоснована тем, что прохождение
+multicast-пакетов из локальной сети БТА в локальную сеть ННП зачастую
+блокируется многочисленым промежуточным сетевым оборудованием.
+
+Данный сервис в режиме демона работает на компьютере \verb'tb.sao.ru', отвечая
+на запросы, адресованные ресурсу \verb'/bta_par' на порту \verb'12345'.
+Демон принимает запросы как от веб-клиентов, так и от непосредственно
+подключенных клиентских сокетов. Полный адрес запроса для веб-клиента выглядит
+так:
+$$
+\verb'http://tb.sao.ru:12345/bta_par'
+$$
+
+По полному запросу сервер возвращает объект JSON с переменными, аналогичными
+выводу программы \verb'bta_print'. 
+\begin{lstlisting}[language=JSON]
+{
+"ACS_BTA": true,
+"M_time": "13:58:57.74",
+"JDate": 2456432.915943,
+"S_time": "04:37:37.01",
+"Tel_Mode": "Stopping",
+"Tel_Focus": "Prime",
+"ValFoc": 98.77,
+"Tel_Taget": "Zenith",
+"P2_Mode": "Stop",
+"CurAlpha": "04:12:28.25",
+"CurDelta": "+39:56:53.4",
+"SrcAlpha": "06:25:53.48",
+"SrcDelta": "+10:00:00.0",
+"InpAlpha": "11:41:52.03",
+"InpDelta": "+24:40:36.4",
+"TelAlpha": "04:57:06.82",
+"TelDelta": "+39:57:14.6",
+"InpAzim": "-118:27:18.0",
+"InpZenD": "83:52:29.3",
+"CurAzim": "+053:55:21.3",
+"CurZenD": "05:57:00.7",
+"CurPA": "049:36:52.7",
+"SrcPA": "329:54:01.0",
+"InpPA": "315:37:58.0",
+"TelPA": "317:08:11.1",
+"ValAzim": "-045:59:40.4",
+"ValZenD": "05:09:31.2",
+"ValP2": "219:33:16.7",
+"ValDome": "+134:55:41.6",
+"DiffAzim": "+000:00:00.0",
+"DiffZenD": "+00:00:00.0",
+"DiffP2": "+000:00:00.0",
+"DiffDome": "-180:55:22.0",
+"VelAzim": "+00:00:00.0",
+"VelZenD": "-00:00:00.0",
+"VelP2": "+00:00:00.0",
+"VelPA": "+00:00:00.0",
+"VelDome": "+00:00:00.0",
+"CorrAlpha": "+0:00:00.00",
+"CorrDelta": "+0:00:00.0",
+"CorrAzim": "+0:00:00.0",
+"CorrZenD": "+0:00:00.0",
+"ValTind": 010.4,
+"ValTmir": 010.3,
+"ValPres": 595.8,
+"ValWind": 01.7,
+"Blast10": 18633.4,
+"Blast15": 59794.7,
+"ValHumd": 86.3,
+"Precipt": 1087.4
+}
+\end{lstlisting}
+
+Момимо запуска утилиты из веб-браузеров можно использовать клиент командной
+строки. Образцы клиентов находятся в директории \verb'/Users/eddy/BTA_utils'
+компьютера \verb'tb.sao.ru', а также "--- в репозитории \verb'btautils' по
+адресу \url{https://sourceforge.net/projects/btautils/}. Помимо однократных
+запросов клиент может создать постоянное подключение к сокету демона для
+регулярных запросов интересующих его данных (см.~п.~\ref{coding}).
+
+\section{Определение полей объекта JSON}
+В таблице~\ref{json_head} приведено описание полей объекта JSON, возвращаемого
+сервером клиенту. Тип данных поля имеет одно из следующих значений:
+\begin{description}
+\item[текст --] строковая величина (например, \verb'"Zenith"');
+\item[время --] строковая величина, характеризующая время, вида
+	\verb'HH:MM:SS.SS' (для времени и прямых восхождений);
+\item[угол --] строковая величина вида \verb'[+]D:MM:SS.S' (для угловых
+	величин);
+\item[число --] число с плавающей точкой.
+\end{description}
+
+
+\def\CH#1{\multicolumn{1}{|c|}{#1}}
+\begin{longtable}{|>{\tt}r|p{0.46\textwidth}<{\hfil}|c|>{\tt}c|}
+\caption{Поля объектов}\label{json_head}\\
+\hline\hline
+\multicolumn{1}{|m{2cm}|}{\bf Название\par\hfil поля\hfil}& \CH{\bf
+Описание} & \bf Тип данных &\bf Блок\\
+\hline
+\CH{\bf 1}&\CH{\bf 2}& \bf 3 & \bf 4\\
+\hline\endfirsthead
+\hline
+\multicolumn{4}{r}{\small(продолжение см.~на следующей странице)}\\
+\endfoot
+\hline\hline\endlastfoot
+\caption{Продолжение}\\
+\hline
+\CH{\bf 1}&\CH{\bf 2}& \bf 3& \bf 4\\
+\hline\endhead
+ACS\_BTA& Унаследованное от \texttt{bta\_print} поле, всегда \texttt{true}&
+--- & \bf---\\
+M\_time& Текущее московское время& время & mtime\\
+JDate& Текущая юлианская дата (сут.)& число & sidtime\\
+S\_time& Текущее звездное время& время & sidtime\\
+Tel\_Mode& Режим работы телескопа& строка & telmode\\
+Tel\_Focus& Активный фокус телескопа & строка & telfocus\\
+ValFoc& Отсчет датчика фокуса телескопа, мм& число & telfocus\\
+Tel\_Taget& Текущая цель телескопа& строка & target\\
+P2\_Mode& Режим работы поворотного стола& строка & p2mode\\
+CurAlpha& Текущие координаты предыдущей цели ($\alpha$~-- прямое восхождение) &
+время & eqcoor\\
+CurDelta& Текущие координаты предыдущей цели ($\delta$~-- склонение)& угол &
+eqcoor\\
+SrcAlpha& Текущие координаты цели ($\alpha$)& время & eqcoor\\
+SrcDelta& Текущие координаты цели ($\delta$)& угол & eqcoor\\
+InpAlpha& Введенные пользователем координаты ($\alpha$)& время & eqcoor\\
+InpDelta& Введенные пользователем координаты ($\delta$)& угол & eqcoor\\
+TelAlpha& Текущие координаты телескопа ($\alpha$)& время & eqcoor\\
+TelDelta& Текущие координаты телескопа ($\delta$)& угол & eqcoor\\
+InpAzim& Введенные горизонтальные координаты ($A$~-- азимут)& угол & horcoor\\
+InpZenD& Введенные горизонтальные координаты ($Z$~-- зенитное расстояние)&
+угол & horcoor\\
+CurAzim& Текущие горизонтальные координаты предыдущей цели ($A$)& угол &
+horcoor\\
+CurZenD& Текущие горизонтальные координаты предыдущей цели ($Z$)& угол &
+horcoor\\
+CurPA& Текущий позиционный угол предыдущей цели& угол & horcoor\\
+SrcPA& Текущий позиционный угол цели& угол & horcoor\\
+InpPA& Введенный пользователем позиционный угол& угол & horcoor\\
+TelPA& Текущий позиционный угол телескопа& угол & horcoor\\
+ValAzim& Отсчет датчика азимута& угол & valsens\\
+ValZenD& Отсчет датчика зенитного расстояния& угол  & valsens\\
+ValP2& Отсчет датчика положения поворотного стола& угол & valsens\\
+ValDome& Отсчет датчика азимута купола& угол & valsens\\
+DiffAzim& Рассогласование по азимуту& угол & diff\\
+DiffZenD& Рассогласование по зенитному расстоянию& угол & diff\\
+DiffP2& Рассогласование по углу вращения поворотного стола& угол & diff\\
+DiffDome& Рассогласование по азимуту купола& угол & diff\\
+VelAzim& Текущая скорость движения телескопа по азимуту& угол & vel\\
+VelZenD& Текущая скорость движения телескопа по зенитному расстоянию& угол &
+vel\\
+VelP2& Текущая скорость движения поворотного стола & угол & vel\\
+VelPA& Текущая скорость <<вращения неба>>& угол & vel\\
+VelDome& Текущая скорость движения купола& угол & vel\\
+CorrAlpha& Введенная поправка по прямому восхождению& угол & corr\\
+CorrDelta& Введенная поправка по склонению& угол & corr\\
+CorrAzim& Введенная поправка по азимуту& угол & corr\\
+CorrZenD& Введенная поправка по зенитному расстоянию& угол & corr\\
+ValTind& Температура в подкупольном, $\degr$C& число & meteo\\
+ValTmir& Температура зеркала, $\degr$C& число & meteo\\
+ValPres& Атмосферное давление, мм.рт.ст.& число & meteo\\
+ValWind& Скорость ветра, м/с& число & meteo\\
+Blast10& Время от последнего порыва ветра, превышающего 10\,м/с, секунд& число &
+meteo\\
+Blast15& Время от последнего порыва ветра, превышающего 15\,м/с, секунд& число &
+meteo\\
+ValHumd& Влажность воздуха, \%& число & meteo\\
+Precipt& Время, прошедшее с момента последнего выпадения осадков, секунд&
+число & meteo\\
+\end{longtable}
+
+\section{Осуществление постоянного подключения}
+\label{coding}
+Для осуществления постоянного удаленного подключения к демону для
+периодического получения необходимых данных, необходимо создать сокет,
+подключенный к хосту \verb'tb.sao.ru' по порту \verb'12345'.
+
+Для запроса конкретного блока данных во время постоянного подключения, в
+качестве запроса необходимо отправлять текст, указанный в строке <<Блок>>
+таблицы~\ref{json_head}.
+
+Формирование строки запроса можно сделать одним из следующих способов:
+\begin{itemize}
+\item посредством перечисления названий нужных блоков через разделитель
+(разделителем является пробел, амперсанд, символ табуляции или символ новой
+строки);
+\item посредством формирования запроса вида \verb'GET /bta_par&blocks', где
+\verb'blocks'~-- запрос аналогичный предыдущему пункту;
+\item посредством формирования запроса вида \verb'GET /bta_par', в этом случае
+демон формирует ответ с перечислением всех блоков, а затем отключается. 
+\end{itemize}
+
+Для обработки JSON--объекта можно использовать библиотеку \verb'libjson', либо
+же обрабатывать его вручную (т.к. структура объекта элементарная и
+однообразная).
+
+Учитывая то, что мультикаст-пакеты с данными по БТА распространяются не чаще
+15~раз в~секунду, не стоит делать запросы чаще 10~раз в~секунду.
+
+\end{document}
