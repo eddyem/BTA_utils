@@ -18,9 +18,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
  * MA 02110-1301, USA.
  */
-#define _BSD_SOURCE
-#include <endian.h>
 
+#include <math.h>
+#include <endian.h>
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
@@ -41,14 +41,18 @@
 #include <arpa/inet.h>
 
 #include "usefull_macros.h"
+#include "angle_functions.h"
+#include "bta_shdata.h"
 
 // daemon.c
 extern void check4running(char **argv, char *pidfilename, void (*iffound)(pid_t pid));
 
 // Max amount of connections
 #define BACKLOG     (1)
-
-#define PORT ("10000")
+// port for connections
+#define PORT (10000)
+// accept only local connections
+#define ACCEPT_IP  "127.0.0.1"
 #define BUFLEN (1024)
 
 static uint8_t buff[BUFLEN+1];
@@ -57,7 +61,8 @@ static uint8_t buff[BUFLEN+1];
 
 static volatile int global_quit = 0;
 // quit by signal
-static void signals(int sig){
+void signals(int sig){
+	restore_console();
 	DBG("Get signal %d, quit.\n", sig);
 	global_quit = 1;
 	sleep(1);
@@ -83,26 +88,15 @@ char* stringscan(char *str, char *needle){
  * @param data   - data to send
  * @param dlen   - data length
  * @param sockfd - socket fd for sending data
+ * @return 0 if failed
  */
-void send_data(uint8_t *data, size_t dlen, int sockfd){
-	/*char buf[1024];
-	if(!strip){
-		if(imtype == IMTYPE_RAW)
-			L = snprintf(buf, 255, "%s\n%dx%d\n", imsuffixes[imtype], w, h);
-		else
-			L = snprintf(buf, 255, "%s\n%zd\n", imsuffixes[imtype], buflen);
-	}else{
-		L = snprintf(buf, 1023, "HTTP/2.0 200 OK\r\nContent-type: image/%s\r\n"
-			"Content-Length: %zd\r\n\r\n", mimetypes[imtype], buflen);
-	}
-	buff = MALLOC(uint8_t, L + buflen);
-	memcpy(buff, buf, L);
-	memcpy(buff+L, imagedata, buflen);
-	FREE(imagedata);
-	buflen += L;*/
+int send_data(uint8_t *data, size_t dlen, int sockfd){
 	size_t sent = write(sockfd, data, dlen);
-	if(sent != dlen) WARN("write()");
-	//FREE(buff);
+	if(sent != dlen){
+		WARN("write()");
+		return 0;
+	}
+	return 1;
 }
 
 //read: 0x14 0x0 0x0 0x0 0x5b 0x5a 0x2e 0xc6 0x8c 0x23 0x5 0x0 0x23 0x9 0xe5 0xaf 0x23 0x2e 0x34 0xed
@@ -160,8 +154,6 @@ typedef struct __attribute__((__packed__)){
 	int32_t status;
 } outdata;
 
-static double tagRA = -1., tagDec = -100.;
-
 void proc_data(uint8_t *data, ssize_t len){
 	FNAME();
 	if(len != sizeof(indata)){
@@ -184,18 +176,13 @@ void proc_data(uint8_t *data, ssize_t len){
 	ra = dat->ra; dec = dat->dec;
 #endif
 	WARN("got message with len %u & type %u", L, T);
-	tagRA = RA2HRS(ra); tagDec = DEC2DEG(dec);
+	double tagRA = RA2HRS(ra), tagDec = DEC2DEG(dec);
 	WARN("RA: %u (%g), DEC: %d (%g)", ra, tagRA,
 		dec, tagDec);
 	time_t z = time(NULL);
 	time_t tm = (time_t)(tim/1000000);
 	WARN("time: %ju  (local: %ju)", (uintmax_t)tm, (uintmax_t)z);
 	WARN("time: %zd -- %s local: %s", tim, ctime(&tm), ctime(&z));
-/*	memmove(buff, data, sizeof(indata));
-	outdata *dout = (outdata*) buff;
-	dout->ra = 0; dout->dec = 0x40000000;
-	dout->status = 0;
-	send_data(data, sizeof(outdata), sock);*/
 }
 
 /**
@@ -206,24 +193,17 @@ void handle_socket(int sock){
 	if(global_quit) return;
 	ssize_t readed;
 	outdata dout;
-	uint32_t oldra;
-	int32_t olddec;
 	dout.len = sizeof(outdata);
 	dout.type = 0;
 	dout.status = 0;
-	dout.ra = (tagRA < -0.1) ? 0 : HRS2RA(tagRA);
-	dout.dec = (tagDec < -91.) ? DEG2DEC(80.) : DEG2DEC(tagDec);
-	oldra = dout.ra; olddec = dout.dec;
 	while(!global_quit){
-		//dout.ra += 0xF5555555;
-		if(tagRA < -0.1) dout.ra += HRS2RA(0.33);
-		else dout.ra = HRS2RA(tagRA);
-		if(tagDec > -91.) dout.dec = DEG2DEC(tagDec);
-		if(dout.ra != oldra || dout.dec != olddec){
-			send_data((uint8_t*)&dout, sizeof(outdata), sock);
-			DBG("sent ra = %g (%g), dec = %g (%g)", RA2HRS(dout.ra), tagRA, DEC2DEG(dout.dec), tagDec);
-			oldra = (dout.ra+oldra)/2; olddec = (dout.dec+olddec)/2;
-		}
+		double r, d, ca, cd;
+		calc_AD(val_A, val_Z, S_time, &ca, &cd); // calculate current telescope polar coordinates
+		calc_mean(ca, cd, &r, &d);
+		dout.ra = HRS2RA(r);
+		dout.dec = DEG2DEC(d);
+		if(!send_data((uint8_t*)&dout, sizeof(outdata), sock)) break;
+		DBG("sent ra = %g, dec = %g", RA2HRS(dout.ra), DEC2DEG(dout.dec));
 		fd_set readfds;
 		struct timeval timeout;
 		FD_ZERO(&readfds);
@@ -248,90 +228,84 @@ void handle_socket(int sock){
 		 *       DO SOMETHING WITH DATA       *
 		 **************************************/
 		proc_data(buff, readed);
-		//send_data(...);
 	}
 	close(sock);
 }
 
+#define ACS_CMD(a)   do{green(#a); printf("\n");}while(0)
+typedef struct{
+	uint32_t keylev;
+	uint32_t codelev;
+} passhash;
+
+void get_passhash(passhash *p){
+	int i, c, nlev = 0;
+	// ask user to enter password
+	setup_con(); // hide echo
+	for(i = 3; i > 0; --i){ // try 3 times
+		char pass[256]; int k = 0;
+		printf("Enter password, you have %d tr%s\n", i, (i > 1) ? "ies":"y");
+		while ((c = mygetchar()) != '\n' && c != EOF && k < 255){
+			if(c == '\b' || c == 127){ // use DEL and BACKSPACE to erase previous symbol
+				if(k) --k;
+				printf("\b \b");
+			}else{
+				pass[k++] = c;
+				printf("*");
+			}
+			fflush(stdout);
+		}
+		pass[k] = 0;
+		printf("\n");
+		if((nlev = find_lev_passwd(pass, &p->keylev, &p->codelev)))
+			break;
+		printf(_("No, not this\n"));
+	}
+	restore_console();
+	if(nlev == 0)
+		ERRX(_("Tries excess!"));
+	set_acckey(p->keylev);
+	DBG("OK, level %d", nlev);
+}
+
 static inline void main_proc(){
 	int sock;
-	struct addrinfo hints, *res, *p;
 	int reuseaddr = 1;
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE;
-	if(getaddrinfo(NULL, PORT, &hints, &res) != 0){
-		ERR("getaddrinfo");
+	//get_cmd_queue(&ucmd, ClientSide);
+	//get_passhash(&pass);
+	// open socket
+	struct sockaddr_in myaddr;
+	myaddr.sin_family = AF_INET;
+	myaddr.sin_port = htons(PORT);
+	if(!inet_aton(ACCEPT_IP, (struct in_addr*)&myaddr.sin_addr.s_addr))
+		ERR("inet_aton");
+	if((sock = socket(PF_INET, SOCK_STREAM, 0)) == -1){
+		ERR("socket");
 	}
-	struct sockaddr_in *ia = (struct sockaddr_in*)res->ai_addr;
-	char str[INET_ADDRSTRLEN];
-	inet_ntop(AF_INET, &(ia->sin_addr), str, INET_ADDRSTRLEN);
-	DBG("port: %u, addr: %s\n", ntohs(ia->sin_port), str);
-	// loop through all the results and bind to the first we can
-	for(p = res; p != NULL; p = p->ai_next){
-		if((sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1){
-			WARN("socket");
-			continue;
-		}
-		if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof(int)) == -1){
-			ERR("setsockopt");
-		}
-		if(bind(sock, p->ai_addr, p->ai_addrlen) == -1){
-			close(sock);
-			WARN("bind");
-			continue;
-		}
-		break; // if we get here, we have a successfull connection
+	if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof(int)) == -1){
+		ERR("setsockopt");
 	}
-	if(p == NULL){
-		// looped off the end of the list with no successful bind
-		ERRX("failed to bind socket");
+	if(-1 == bind(sock, (struct sockaddr*)&myaddr, sizeof(myaddr))){
+		close(sock);
+		ERR("bind");
 	}
 	// Listen
 	if(listen(sock, BACKLOG) == -1){
 		ERR("listen");
 	}
-	freeaddrinfo(res);
+	//freeaddrinfo(res);
 	// Main loop
 	while(!global_quit){
-//		fd_set readfds;
-//		struct timeval timeout;
 		socklen_t size = sizeof(struct sockaddr_in);
-		struct sockaddr_in their_addr;
+		struct sockaddr_in myaddr;
 		int newsock;
-/*		FD_ZERO(&readfds);
-		FD_SET(sock, &readfds);
-		timeout.tv_sec = 0; // wait not more than 10 milliseconds
-		timeout.tv_usec = 10000;
-		int sel = select(sock + 1 , &readfds , NULL , NULL , &timeout);
-		if(sel < 0){
-			if(errno != EINTR)
-				WARN("select()");
-			continue;
-		}
-		if(!(FD_ISSET(sock, &readfds))) continue;*/
-	//	DBG("accept");
-		newsock = accept(sock, (struct sockaddr*)&their_addr, &size);
-	//	printf("got addr %ul\n", their_addr.sin_addr.s_addr);
+		newsock = accept(sock, (struct sockaddr*)&myaddr, &size);
 		if(newsock <= 0){
 			WARN("accept()");
 			continue;
 		}
-		pid_t pid = fork();
-		if(pid < 0)
-			ERR("ERROR on fork");
-		if(pid == 0){
-			close(sock);
-			handle_socket(newsock);
-			exit(0);
-		}else
-			close(newsock);
+		handle_socket(newsock);
 	}
-
-	// wait for thread ends before closing videodev
-//	pthread_join(readout_thread, NULL);
-//	pthread_mutex_unlock(&readout_mutex);
 	close(sock);
 }
 
@@ -347,6 +321,22 @@ int main(_U_ int argc, char **argv){
 	signal(SIGINT, signals);  // ctrl+C - quit
 	signal(SIGQUIT, signals); // ctrl+\ - quit
 	signal(SIGTSTP, SIG_IGN); // ignore ctrl+Z
+	if(!get_shm_block(&sdat, ClientSide))
+		ERRX(_("Can't find shared memory block"));
+	if(!check_shm_block(&sdat))
+		ERRX(_("There's no connection to BTA!"));
+	double last = M_time;
+	int i;
+	printf(_("Test connection\n"));
+	for(i = 0; i < 10 && fabs(M_time - last) < 0.02; ++i){
+		printf("."); fflush(stdout);
+		sleep(1);
+	}
+	printf("\n");
+	if(fabs(M_time - last) < 0.02)
+		ERRX(_("Data stale!"));
+	printf(_("All OK, start socket\n"));
+
 /*
 #ifndef EBUG // daemonize only in release mode
 	if(!Global_parameters->nodaemon){
@@ -357,9 +347,11 @@ int main(_U_ int argc, char **argv){
 	}
 #endif // EBUG
 */
-/*
+
 	while(1){
 		pid_t childpid = fork();
+		if(childpid < 0)
+			ERR("ERROR on fork");
 		if(childpid){
 			DBG("Created child with PID %d\n", childpid);
 			wait(NULL);
@@ -370,7 +362,6 @@ int main(_U_ int argc, char **argv){
 			return 0;
 		}
 	}
-	*/
-	main_proc();
+
 	return 0;
 }

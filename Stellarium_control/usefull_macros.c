@@ -21,8 +21,6 @@
 
 #include "usefull_macros.h"
 
-
-#include <sys/time.h>
 /**
  * function for different purposes that need to know time intervals
  * @return double value: time in seconds
@@ -91,7 +89,7 @@ int r_WARN(const char *fmt, ...){
 	return i;
 }
 
-const char stars[] = "****************************************";
+static const char stars[] = "****************************************";
 /*
  * notty variants of coloured printf
  * name: s_WARN, r_pr_notty
@@ -139,7 +137,7 @@ void initial_setup(){
 	// Setup locale
 	setlocale(LC_ALL, "");
 	setlocale(LC_NUMERIC, "C");
-#ifdef GETTEXT_PACKAGE
+#if defined GETTEXT_PACKAGE && defined LOCALEDIR
 	bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR);
 	textdomain(GETTEXT_PACKAGE);
 #endif
@@ -160,12 +158,7 @@ void *my_alloc(size_t N, size_t S){
 	//assert(p);
 	return p;
 }
-/*
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
-*/
+
 /**
  * Mmap file to a memory area
  *
@@ -202,24 +195,27 @@ void My_munmap(mmapbuf *b){
 /******************************************************************************\
  *                          Terminal in no-echo mode
 \******************************************************************************/
-struct termios oldt, newt; // terminal flags
+static struct termios oldt, newt; // terminal flags
+static int console_changed = 0;
 // run on exit:
-/*
-void quit(int sig){
-	//...
-	tcsetattr(STDIN_FILENO, TCSANOW, &oldt); // return terminal to previous state
-	//...
+void restore_console(){
+	if(console_changed)
+		tcsetattr(STDIN_FILENO, TCSANOW, &oldt); // return terminal to previous state
+	console_changed = 0;
 }
-*/
+
 // initial setup:
 void setup_con(){
+	if(console_changed) return;
 	tcgetattr(STDIN_FILENO, &oldt);
 	newt = oldt;
 	newt.c_lflag &= ~(ICANON | ECHO);
 	if(tcsetattr(STDIN_FILENO, TCSANOW, &newt) < 0){
+		WARN(_("Can't setup console"));
 		tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-		exit(-2); //quit?
+		signals(0); //quit?
 	}
+	console_changed = 1;
 }
 
 /**
@@ -248,7 +244,7 @@ int read_console(){
  * wait until at least one character pressed
  * @return character readed
  */
-int mygetchar(){ // аналог getchar() без необходимости жать Enter
+int mygetchar(){ // getchar() without need of pressing ENTER
 	int ret;
 	do ret = read_console();
 	while(ret == 0);
@@ -259,39 +255,45 @@ int mygetchar(){ // аналог getchar() без необходимости ж�
 /******************************************************************************\
  *                              TTY with select()
 \******************************************************************************/
-struct termio oldtty, tty; // TTY flags
-char *comdev; // TTY device name
-int comfd; // TTY fd
+static struct termio oldtty, tty; // TTY flags
+static int comfd = -1; // TTY fd
+
 // run on exit:
-/*
-void quit(int ex_stat){
+void restore_tty(){
+	if(comfd == -1) return;
 	ioctl(comfd, TCSANOW, &oldtty ); // return TTY to previous state
 	close(comfd);
-	//...
+	comfd = -1;
 }
-*/
+
 #ifndef BAUD_RATE
 #define BAUD_RATE B9600
 #endif
 // init:
-void tty_init(){
-	printf("\nOpen port...\n");
+void tty_init(char *comdev){
+	DBG("\nOpen port...\n");
 	if ((comfd = open(comdev,O_RDWR|O_NOCTTY|O_NONBLOCK)) < 0){
-		fprintf(stderr,"Can't use port %s\n",comdev);
+		WARN("Can't use port %s\n",comdev);
 		ioctl(comfd, TCSANOW, &oldtty); // return TTY to previous state
 		close(comfd);
-		exit(1); // quit?
+		signals(0); // quit?
 	}
-	printf(" OK\nGet current settings...\n");
-	if(ioctl(comfd,TCGETA,&oldtty) < 0) exit(-1); // Get settings
+	DBG(" OK\nGet current settings... ");
+	if(ioctl(comfd,TCGETA,&oldtty) < 0){  // Get settings
+		WARN(_("Can't get settings"));
+		signals(0);
+	}
 	tty = oldtty;
 	tty.c_lflag     = 0; // ~(ICANON | ECHO | ECHOE | ISIG)
 	tty.c_oflag     = 0;
 	tty.c_cflag     = BAUD_RATE|CS8|CREAD|CLOCAL; // 9.6k, 8N1, RW, ignore line ctrl
 	tty.c_cc[VMIN]  = 0;  // non-canonical mode
 	tty.c_cc[VTIME] = 5;
-	if(ioctl(comfd,TCSETA,&tty) < 0) exit(-1); // set new mode
-	printf(" OK\n");
+	if(ioctl(comfd,TCSETA,&tty) < 0){
+		WARN(_("Can't set settings"));
+		signals(0);
+	}
+	DBG(" OK\n");
 }
 /**
  * Read data from TTY
@@ -313,4 +315,13 @@ size_t read_tty(uint8_t *buff, size_t length){
 		if((L = read(comfd, buff, length)) < 1) return 0;
 	}
 	return (size_t)L;
+}
+
+int write_tty(uint8_t *buff, size_t length){
+	ssize_t L = write(comfd, buff, length);
+	if((size_t)L != length){
+		WARN("Write error!");
+		return 1;
+	}
+	return 0;
 }

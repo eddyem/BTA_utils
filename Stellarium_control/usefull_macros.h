@@ -33,7 +33,18 @@
 #include <errno.h>
 #include <err.h>
 #include <locale.h>
+#if defined GETTEXT_PACKAGE && defined LOCALEDIR
+/*
+ * GETTEXT
+ */
 #include <libintl.h>
+#define _(String)				gettext(String)
+#define gettext_noop(String)	String
+#define N_(String)				gettext_noop(String)
+#else
+#define _(String)				(String)
+#define N_(String)				(String)
+#endif
 #include <stdlib.h>
 #include <termios.h>
 #include <termio.h>
@@ -41,12 +52,6 @@
 #include <sys/types.h>
 #include <stdint.h>
 
-/*
- * GETTEXT
- */
-#define _(String)				gettext(String)
-#define gettext_noop(String)	String
-#define N_(String)				gettext_noop(String)
 
 // unused arguments with -Wall -Werror
 #define _U_    __attribute__((__unused__))
@@ -62,8 +67,9 @@
  * ERROR/WARNING messages
  */
 extern int globErr;
-#define ERR(...) do{globErr=errno; _WARN(__VA_ARGS__); exit(-1);}while(0)
-#define ERRX(...) do{globErr=0; _WARN(__VA_ARGS__); exit(-1);}while(0)
+extern void signals(int sig);
+#define ERR(...) do{globErr=errno; _WARN(__VA_ARGS__); signals(0);}while(0)
+#define ERRX(...) do{globErr=0; _WARN(__VA_ARGS__); signals(0);}while(0)
 #define WARN(...) do{globErr=errno; _WARN(__VA_ARGS__);}while(0)
 #define WARNX(...) do{globErr=0; _WARN(__VA_ARGS__);}while(0)
 
@@ -88,6 +94,8 @@ extern int globErr;
 #define MALLOC(type, size) ((type *)my_alloc(size, sizeof(type)))
 #define FREE(ptr)			do{free(ptr); ptr = NULL;}while(0)
 
+double dtime();
+
 // functions for color output in tty & no-color in pipes
 extern int (*red)(const char *fmt, ...);
 extern int (*_WARN)(const char *fmt, ...);
@@ -102,5 +110,15 @@ typedef struct{
 } mmapbuf;
 mmapbuf *My_mmap(char *filename);
 void My_munmap(mmapbuf *b);
+
+void restore_console();
+void setup_con();
+int read_console();
+int mygetchar();
+
+void restore_tty();
+void tty_init(char *comdev);
+size_t read_tty(uint8_t *buff, size_t length);
+int write_tty(uint8_t *buff, size_t length);
 
 #endif // __USEFULL_MACROS_H__
