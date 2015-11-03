@@ -118,8 +118,8 @@ void calc_mean(double appRA, double appDecl, double *r, double *d){
 void calc_AD(double az, double zd, double stime, double *alpha, double *delta){
 	double sin_d, sin_a, cos_a, sin_z, cos_z;
 	double t, d, x, y;
-	const double cos_fi=0.7235272793;    /* Cos of SAO latitude     */
-	const double sin_fi=0.6902957888;    /* Sin  ---  ""  -----     */
+	const double cos_fi = 0.7235272793;    /* Cos of SAO latitude     */
+	const double sin_fi = 0.6902957888;    /* Sin  ---  ""  -----     */
 	DBG("AZ: %g, ZD: %g", az, zd);
 	az *= DAS2R;
 	zd *= DAS2R;

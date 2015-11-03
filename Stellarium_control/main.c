@@ -154,35 +154,61 @@ typedef struct __attribute__((__packed__)){
 	int32_t status;
 } outdata;
 
-void proc_data(uint8_t *data, ssize_t len){
+#define ACS_CMD(a)   do{green(#a); printf("\n");}while(0)
+/**
+ * send input RA/Decl (j2000!) coordinates to tel
+ * both coords are in seconds (ra in time, dec in angular)
+ */
+int setCoords(double ra, double dec){
+	double r, d;
+	calc_AP(ra, dec, &r, &d);
+	DBG("Set RA/Decl to %g, %g", r/3600, d/3600);
+	ACS_CMD(SetRADec(r, d));
+	int i;
+	for(i = 0; i < 10; ++i){
+		if(InpAlpha == r && InpDelta == d) break;
+		usleep(100000);
+	}
+	if(InpAlpha != r || InpDelta != d){
+		WARNX(_("Can't send data to system!"));
+		return 0;
+	}
+	return 1;
+}
+
+int proc_data(uint8_t *data, ssize_t len){
 	FNAME();
 	if(len != sizeof(indata)){
 		WARN("Bad data size: got %zd instead of %zd!", len, sizeof(indata));
-		return;
+		return 0;
 	}
 	indata *dat = (indata*)data;
 	uint16_t L, T;
-	uint64_t tim;
+	//uint64_t tim;
 	uint32_t ra;
 	int32_t dec;
 #if __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
 	L = le16toh(dat->len); T = le16toh(dat->type);
-	tim = le64toh(dat->time);
+	//tim = le64toh(dat->time);
 	ra = le32toh(dat->ra);
 	dec = (int32_t)le32toh((uint32_t)dat->dec);
 #else
 	L = dat->len; T = dat->type;
-	tim = dat->time;
+	//tim = dat->time;
 	ra = dat->ra; dec = dat->dec;
 #endif
 	WARN("got message with len %u & type %u", L, T);
 	double tagRA = RA2HRS(ra), tagDec = DEC2DEG(dec);
 	WARN("RA: %u (%g), DEC: %d (%g)", ra, tagRA,
 		dec, tagDec);
+	if(!setCoords(tagRA, tagDec)) return 0;
+	return 1;
+/*
 	time_t z = time(NULL);
 	time_t tm = (time_t)(tim/1000000);
 	WARN("time: %ju  (local: %ju)", (uintmax_t)tm, (uintmax_t)z);
 	WARN("time: %zd -- %s local: %s", tim, ctime(&tm), ctime(&z));
+	*/
 }
 
 /**
@@ -193,15 +219,15 @@ void handle_socket(int sock){
 	if(global_quit) return;
 	ssize_t readed;
 	outdata dout;
-	dout.len = sizeof(outdata);
+	dout.len = htole16(sizeof(outdata));
 	dout.type = 0;
 	dout.status = 0;
 	while(!global_quit){
 		double r, d, ca, cd;
 		calc_AD(val_A, val_Z, S_time, &ca, &cd); // calculate current telescope polar coordinates
 		calc_mean(ca, cd, &r, &d);
-		dout.ra = HRS2RA(r);
-		dout.dec = DEG2DEC(d);
+		dout.ra = htole32(HRS2RA(r));
+		dout.dec = (int32_t)htole32(DEG2DEC(d));
 		if(!send_data((uint8_t*)&dout, sizeof(outdata), sock)) break;
 		DBG("sent ra = %g, dec = %g", RA2HRS(dout.ra), DEC2DEG(dout.dec));
 		fd_set readfds;
@@ -227,12 +253,12 @@ void handle_socket(int sock){
 		/**************************************
 		 *       DO SOMETHING WITH DATA       *
 		 **************************************/
-		proc_data(buff, readed);
+		if(!proc_data(buff, readed)) dout.status = -1;
+		else dout.status = 0;
 	}
 	close(sock);
 }
 
-#define ACS_CMD(a)   do{green(#a); printf("\n");}while(0)
 typedef struct{
 	uint32_t keylev;
 	uint32_t codelev;
@@ -271,8 +297,6 @@ void get_passhash(passhash *p){
 static inline void main_proc(){
 	int sock;
 	int reuseaddr = 1;
-	//get_cmd_queue(&ucmd, ClientSide);
-	//get_passhash(&pass);
 	// open socket
 	struct sockaddr_in myaddr;
 	myaddr.sin_family = AF_INET;
@@ -335,6 +359,9 @@ int main(_U_ int argc, char **argv){
 	printf("\n");
 	if(fabs(M_time - last) < 0.02)
 		ERRX(_("Data stale!"));
+	//get_cmd_queue(&ucmd, ClientSide);
+	//passhash pass = {0,0};
+	//get_passhash(&pass);
 	printf(_("All OK, start socket\n"));
 
 /*
