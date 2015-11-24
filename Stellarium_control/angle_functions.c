@@ -141,3 +141,5 @@ void calc_AD(double az, double zd, double stime, double *alpha, double *delta){
 		*alpha += 86400.;      // +24h
 	DBG("A: %g, Z: %g, alp: %g, del: %g", az, zd, *alpha, *delta);
 }
+
+

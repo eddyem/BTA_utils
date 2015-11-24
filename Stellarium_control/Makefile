@@ -2,7 +2,7 @@ PROGRAM = stellariumdaemon
 LDFLAGS = -lcrypt -lm -lsla
 SRCS = $(wildcard *.c)
 CC = gcc
-DEFINES = -D_GNU_SOURCE -D_BSD_SOURCE -D_XOPEN_SOURCE=1111 -DEBUG
+DEFINES = -D_GNU_SOURCE -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=1111 -DEBUG
 CXX = gcc
 CFLAGS = -Wall -Werror -Wextra $(DEFINES)
 OBJS = $(SRCS:.c=.o)

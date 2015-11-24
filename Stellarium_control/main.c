@@ -50,9 +50,9 @@ extern void check4running(char **argv, char *pidfilename, void (*iffound)(pid_t 
 // Max amount of connections
 #define BACKLOG     (1)
 // port for connections
-#define PORT (10000)
+#define PORT "10000"
 // accept only local connections
-#define ACCEPT_IP  "127.0.0.1"
+#define ACCEPT_IP  "192.168.3.225"
 #define BUFLEN (1024)
 
 static uint8_t buff[BUFLEN+1];
@@ -154,7 +154,7 @@ typedef struct __attribute__((__packed__)){
 	int32_t status;
 } outdata;
 
-#define ACS_CMD(a)   do{green(#a); printf("\n");}while(0)
+#define ACS_CMD(a)   do{green(#a); printf("\n"); a; }while(0)
 /**
  * send input RA/Decl (j2000!) coordinates to tel
  * both coords are in seconds (ra in time, dec in angular)
@@ -223,9 +223,10 @@ void handle_socket(int sock){
 	dout.type = 0;
 	dout.status = 0;
 	while(!global_quit){
-		double r, d, ca, cd;
-		calc_AD(val_A, val_Z, S_time, &ca, &cd); // calculate current telescope polar coordinates
-		calc_mean(ca, cd, &r, &d);
+		double r, d;//, ca, cd;
+		//calc_AD(val_A, val_Z, S_time, &ca, &cd); // calculate current telescope polar coordinates
+		//calc_mean(ca, cd, &r, &d);
+		calc_mean(val_Alp, val_Del, &r, &d);
 		dout.ra = htole32(HRS2RA(r));
 		dout.dec = (int32_t)htole32(DEG2DEC(d));
 		if(!send_data((uint8_t*)&dout, sizeof(outdata), sock)) break;
@@ -298,20 +299,32 @@ static inline void main_proc(){
 	int sock;
 	int reuseaddr = 1;
 	// open socket
-	struct sockaddr_in myaddr;
-	myaddr.sin_family = AF_INET;
-	myaddr.sin_port = htons(PORT);
-	if(!inet_aton(ACCEPT_IP, (struct in_addr*)&myaddr.sin_addr.s_addr))
-		ERR("inet_aton");
-	if((sock = socket(PF_INET, SOCK_STREAM, 0)) == -1){
-		ERR("socket");
+	struct addrinfo hints, *res, *p;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+	if(getaddrinfo(NULL, PORT, &hints, &res) != 0){
+		ERR("getaddrinfo");
 	}
-	if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof(int)) == -1){
-		ERR("setsockopt");
-	}
-	if(-1 == bind(sock, (struct sockaddr*)&myaddr, sizeof(myaddr))){
-		close(sock);
-		ERR("bind");
+	struct sockaddr_in *ia = (struct sockaddr_in*)res->ai_addr;
+	char str[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &(ia->sin_addr), str, INET_ADDRSTRLEN);
+	// loop through all the results and bind to the first we can
+	for(p = res; p != NULL; p = p->ai_next){
+		if((sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1){
+			WARN("socket");
+			continue;
+		}
+		if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof(int)) == -1){
+			ERR("setsockopt");
+		}
+		if(bind(sock, p->ai_addr, p->ai_addrlen) == -1){
+			close(sock);
+			WARN("bind");
+			continue;
+		}
+		break; // if we get here, we must have connected successfully
 	}
 	// Listen
 	if(listen(sock, BACKLOG) == -1){
@@ -326,6 +339,20 @@ static inline void main_proc(){
 		newsock = accept(sock, (struct sockaddr*)&myaddr, &size);
 		if(newsock <= 0){
 			WARN("accept()");
+			continue;
+		}
+		struct sockaddr_in peer;
+		socklen_t peer_len = sizeof(peer);
+		if (getpeername(newsock, &peer, &peer_len) == -1) {
+			WARN("getpeername()");
+			close(newsock);
+			continue;
+		}
+		char *peerIP = inet_ntoa(peer.sin_addr);
+		DBG("Peer's IP address is: %s\n", peerIP);
+		if(strcmp(peerIP, ACCEPT_IP) && strcmp(peerIP, "127.0.0.1")){
+			WARNX("Wrong IP");
+			close(newsock);
 			continue;
 		}
 		handle_socket(newsock);
@@ -359,21 +386,18 @@ int main(_U_ int argc, char **argv){
 	printf("\n");
 	if(fabs(M_time - last) < 0.02)
 		ERRX(_("Data stale!"));
-	//get_cmd_queue(&ucmd, ClientSide);
-	//passhash pass = {0,0};
-	//get_passhash(&pass);
+	get_cmd_queue(&ucmd, ClientSide);
+	passhash pass = {0,0};
+	get_passhash(&pass);
 	printf(_("All OK, start socket\n"));
 
-/*
+
 #ifndef EBUG // daemonize only in release mode
-	if(!Global_parameters->nodaemon){
-		if(daemon(1, 0)){
-			perror("daemon()");
-			exit(1);
-		}
+	if(daemon(1, 0)){
+		ERR("daemon()");
 	}
 #endif // EBUG
-*/
+
 
 	while(1){
 		pid_t childpid = fork();
