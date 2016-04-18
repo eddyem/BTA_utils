@@ -86,40 +86,44 @@ $$
 \begin{lstlisting}[language=JSON]
 {
 "ACS_BTA": true,
-"M_time": "13:58:57.74",
-"JDate": 2456432.915943,
-"S_time": "04:37:37.01",
+"M_time": "11:19:02.65",
+"JDate": 2457496.846559,
+"S_time": "00:52:20.42",
 "Tel_Mode": "Stopping",
-"Tel_Focus": "Prime",
-"ValFoc": 98.77,
-"Tel_Taget": "Zenith",
+"Tel_Focus": "Nasmyth2",
+"ValFoc": 141.67,
+"Tel_Taget": "Nest",
 "P2_Mode": "Stop",
-"CurAlpha": "04:12:28.25",
-"CurDelta": "+39:56:53.4",
-"SrcAlpha": "06:25:53.48",
-"SrcDelta": "+10:00:00.0",
-"InpAlpha": "11:41:52.03",
-"InpDelta": "+24:40:36.4",
-"TelAlpha": "04:57:06.82",
-"TelDelta": "+39:57:14.6",
-"InpAzim": "-118:27:18.0",
-"InpZenD": "83:52:29.3",
-"CurAzim": "+053:55:21.3",
-"CurZenD": "05:57:00.7",
-"CurPA": "049:36:52.7",
-"SrcPA": "329:54:01.0",
-"InpPA": "315:37:58.0",
-"TelPA": "317:08:11.1",
-"ValAzim": "-045:59:40.4",
-"ValZenD": "05:09:31.2",
-"ValP2": "219:33:16.7",
-"ValDome": "+134:55:41.6",
+"CurAlpha": "17:00:46.09",
+"CurDelta": "+25:23:19.3",
+"SrcAlpha": "20:03:06.61",
+"SrcDelta": "+30:07:03.6",
+"InpAlpha": "20:03:06.61",
+"InpDelta": "+30:07:03.6",
+"TelAlpha": "20:06:48.56",
+"TelDelta": "+25:26:04.6",
+"InpRA2000": "20:02:27.39",
+"InpDec2000": "+30:04:26.0",
+"CurRA2000": "17:00:05.25",
+"CurDec2000": "+25:24:46.6",
+"InpAzim": "+102:24:34.6",
+"InpZenD": "57:30:02.4",
+"CurAzim": "+127:00:42.7",
+"CurZenD": "90:33:43.6",
+"CurPA": "039:45:18.4",
+"SrcPA": "054:46:17.1",
+"InpPA": "054:46:17.1",
+"TelPA": "052:36:08.9",
+"ValAzim": "+097:25:17.8",
+"ValZenD": "59:37:00.4",
+"ValP2": "220:17:30.6",
+"ValDome": "-225:20:43.1",
 "DiffAzim": "+000:00:00.0",
 "DiffZenD": "+00:00:00.0",
-"DiffP2": "+000:00:00.0",
-"DiffDome": "-180:55:22.0",
-"VelAzim": "+00:00:00.0",
-"VelZenD": "-00:00:00.0",
+"DiffP2": "+086:31:52.6",
+"DiffDome": "+322:46:01.0",
+"VelAzim": "-00:00:00.0",
+"VelZenD": "+00:00:00.0",
 "VelP2": "+00:00:00.0",
 "VelPA": "+00:00:00.0",
 "VelDome": "+00:00:00.0",
@@ -127,14 +131,15 @@ $$
 "CorrDelta": "+0:00:00.0",
 "CorrAzim": "+0:00:00.0",
 "CorrZenD": "+0:00:00.0",
-"ValTind": 010.4,
-"ValTmir": 010.3,
-"ValPres": 595.8,
-"ValWind": 01.7,
-"Blast10": 18633.4,
-"Blast15": 59794.7,
-"ValHumd": 86.3,
-"Precipt": 1087.4
+"ValTout": 007.8,
+"ValTind": 005.7,
+"ValTmir": 005.8,
+"ValPres": 596.6,
+"ValWind": 03.1,
+"Blast10": 2503.7,
+"Blast15": 2566.1,
+"ValHumd": 46.8,
+"Precipt": 2364.3
 }
 \end{lstlisting}
 
@@ -193,6 +198,12 @@ SrcAlpha& Текущие координаты цели ($\alpha$)& время & eqcoor\\
 SrcDelta& Текущие координаты цели ($\delta$)& угол & eqcoor\\
 InpAlpha& Введенные пользователем координаты ($\alpha$)& время & eqcoor\\
 InpDelta& Введенные пользователем координаты ($\delta$)& угол & eqcoor\\
+InpRA2000& Обратное преобразование (с использованием библиотеки sla) введенных
+	координат на эпоху J2000 & угол & eqcoor\\
+InpDec2000& InpDelta $\Longrightarrow$ J2000& угол & eqcoor\\
+CurRA2000& CurAlpha $\Longrightarrow$ J2000& угол & eqcoor\\
+CurDec2000& CurDelta $\Longrightarrow$ J2000& угол & eqcoor\\
+
 TelAlpha& Текущие координаты телескопа ($\alpha$)& время & eqcoor\\
 TelDelta& Текущие координаты телескопа ($\delta$)& угол & eqcoor\\
 InpAzim& Введенные горизонтальные координаты ($A$~-- азимут)& угол & horcoor\\

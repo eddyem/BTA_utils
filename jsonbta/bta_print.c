@@ -30,6 +30,9 @@
 #include <sys/times.h>
 #include <crypt.h>
 #include <assert.h>
+#include <slamac.h>  // SLA macros
+
+//#include "sofa.h"
 
 #include "bta_shdata.h"
 #define BTA_PRINT_C
@@ -170,30 +173,56 @@ static double calc_PA(double alpha, double delta, double stime){
 }
 
 /*
-static void calc_AD(double az, double zd, double stime, double *alpha, double *delta){
-	double sin_d, sin_a,cos_a, sin_z,cos_z;
-	double t, d, z, a, p , x, y, s;
-	a = az * S2R;
-	z = zd * S2R;
-	sin_a = sin(a);
-	cos_a = cos(a);
-	sin_z = sin(z);
-	cos_z = cos(z);
-
-	y = sin_z * sin_a;
-	x = cos_a * sin_fi * sin_z + cos_fi * cos_z;
-	t = atan2(y, x);
-	if (t < 0.0)
-	   t += 2.0*PI;
-
-	sin_d = sin_fi * cos_z - cos_fi * cos_a * sin_z;
-	d = asin(sin_d);
-
-	*delta = d * R2S;
-	*alpha = (stime - t * R2S / 15.);
-	if (*alpha < 0.0)
-	*alpha += S360/15.;      // +24h
+void calc2000(double *ra, double *dec){
+	double elong, phi, utc1, utc2;
+	struct tm tms;
+	time_t t = time(NULL);
+	gmtime_r(&t, &tms);
+	int y, m, d;
+	y = 1900 + tms.tm_year;
+	m = tms.tm_mon + 1;
+	d = tms.tm_mday;
+	iauDtf2d("UTC", y, m, d, tms.tm_hour, tms.tm_min, tms.tm_sec, &utc1, &utc2);
+	iauAf2a ( '+', 41, 26, 29.175, &elong );
+	iauAf2a ( '+', 43, 39, 12.69, &phi );
+	//iauAtoc13("R", val_Alp * DS2R, val_Del * DAS2R, utc1, utc2, DUT1,
+	iauAtoc13("R", InpAlpha * DS2R, InpDelta * DAS2R, utc1, utc2, DUT1,
+		elong, phi, 2070.0, polarX, polarY, Pressure/0.76, Temper,
+		val_Hmd/100., 0.55, ra, dec);
+	int i[4];
+	char pm;
+	iauA2tf ( 7, *ra, &pm, i );
+	printf ( " %2.2d %2.2d %2.2d.%7.7d", i[0],i[1],i[2],i[3] );
+	iauA2af ( 6, *dec, &pm, i );
+	printf ( " %c%2.2d %2.2d %2.2d.%6.6d\n", pm, i[0],i[1],i[2],i[3] );
+	printf("DUT: %g, x:%g, y:%g, pres: %g, temp: %g, hum: %g%%\n", DUT1,
+		 polarX, polarY, Pressure/0.76, Temper, val_Hmd/100.);
 }*/
+
+extern void sla_amp(double*, double*, double*, double*, double*, double*);
+
+void slaamp(double ra, double da, double date, double eq, double *rm, double *dm ){
+	double r = ra, d = da, mjd = date, equi = eq;
+	sla_amp(&r, &d, &mjd, &equi, rm, dm);
+}
+const double jd0 = 2400000.5; // JD for MJD==0
+/**
+ * convert apparent coordinates (nowadays) to mean (JD2000)
+ * appRA, appDecl in seconds
+ * r, d in seconds
+ */
+void calc_mean(double appRA, double appDecl, double *r, double *d){
+	double ra, dec;
+	appRA *= DS2R;
+	appDecl *= DAS2R;
+	DBG("appRa: %g, appDecl: %g", appRA, appDecl);
+	double mjd = JDate - jd0;
+	slaamp(appRA, appDecl, mjd, 2000.0, &ra, &dec);
+	ra *= DR2S;
+	dec *= DR2AS;
+	if(r) *r = ra;
+	if(d) *d = dec;
+}
 
 void make_JSON(int sock, bta_pars *par){
 	bool ALL = par->ALL;
@@ -303,6 +332,13 @@ void make_JSON(int sock, bta_pars *par){
 		JSON("InpDelta", angle_asc(InpDelta));
 		JSON("TelAlpha", time_asc(val_Alp));
 		JSON("TelDelta", angle_asc(val_Del));
+		double a2000, d2000;
+		calc_mean(InpAlpha, InpDelta, &a2000, &d2000);
+		JSON("InpRA2000", time_asc(a2000));
+		JSON("InpDec2000", angle_asc(d2000));
+		calc_mean(CurAlpha, CurDelta, &a2000, &d2000);
+		JSON("CurRA2000", time_asc(a2000));
+		JSON("CurDec2000", angle_asc(d2000));
 	}
 	// Horizontal coordinates
 	if(ALL || par->horcoor){
@@ -360,6 +396,7 @@ void make_JSON(int sock, bta_pars *par){
 	}
 	// meteo
 	if(ALL || par->meteo){
+		JSON("ValTout", double_asc(val_T1, "%05.1f"));
 		JSON("ValTind", double_asc(val_T2, "%05.1f"));
 		JSON("ValTmir", double_asc(val_T3, "%05.1f"));
 		JSON("ValPres", double_asc(val_B, "%05.1f"));
@@ -376,5 +413,3 @@ void make_JSON(int sock, bta_pars *par){
 	sendstr("\n}\n");
 }
 
-
-// конец файла
