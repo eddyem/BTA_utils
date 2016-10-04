@@ -1,5 +1,5 @@
 PROGRAM = readwfs
-LDFLAGS =
+LDFLAGS = -lm
 SRCS = $(wildcard *.c)
 CC = gcc
 DEFINES = -D_XOPEN_SOURCE=1111

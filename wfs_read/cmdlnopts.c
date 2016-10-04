@@ -52,7 +52,7 @@ myoption cmdlnopts[] = {
     {"dat",         NEED_ARG, NULL, 'd',    arg_string, APTR(&G.indat),     _("input DAT file name")},
     {"output",      NEED_ARG, NULL, 'o',    arg_string, APTR(&G.outname),   _("output file name")},
     {"step",        NEED_ARG, NULL, 's',    arg_double, APTR(&G.step),      _("coordinate step in wavefront map (R=1)")},
-    {"wfunits",     NEED_ARG, NULL, 'u',    arg_string, APTR(&G.wfunits),   _("units for wavefront measurement in WF map")},
+    {"wfunits",     NEED_ARG, NULL, 'u',    arg_string, APTR(&G.wfunits),   _("units for wavefront measurement in output WF map")},
     {"wavelength",  NEED_ARG, NULL, 'l',    arg_double, APTR(&G.wavelength),_("default wavelength (in meters, microns or nanometers), 101..9999nm")},
     end_option
 };

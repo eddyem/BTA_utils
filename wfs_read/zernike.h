@@ -25,9 +25,16 @@
 // default step in coordinate grid
 #define DEFAULT_CRD_STEP  (0.05)
 // default wavefront unit: lambda
-#define DEFAULT_WF_UNIT "lambda"
+#define DEFAULT_WF_UNIT "meter"
 // default wavelength
 #define DEFAULT_WAVELENGTH (0.65e-6)
+// max power of Zernike polynomial
+#define ZERNIKE_MAX_POWER  (100)
+
+
+typedef struct{
+    double r,theta;
+} polar;
 
 int z_set_step(double step);
 double z_get_step();
@@ -39,5 +46,11 @@ int z_set_wfunit(char *u);
 double z_get_wfcoeff();
 void z_print_wfunits();
 
+void convert_Zidx(int p, int *N, int *M);
 
+polar *gen_coords(int *len);
+
+double *Zcompose(int Zsz, double *Zidxs, int Sz, polar *P);
+
+int z_save_wavefront(int Sz, polar *P, double *Z, char *filename);
 #endif // __ZERNIKE_H__

@@ -76,6 +76,21 @@ void proc_DAT(){
     }
     printf("Read coefficients:\n");
     for(i = 0; i < Zn; ++i) printf("%4d\t%g\n", i, zerncoeffs[i]);
+
+    int L;
+    polar *crds = gen_coords(&L);
+    if(!crds){
+        WARNX("malloc()");
+        return;
+    }
+    printf("%d points\n", L);
+    double *surf = Zcompose(Zn, zerncoeffs, L, crds);
+    if(z_save_wavefront(L, crds, surf, GP->outname))
+        WARN(_("Can't open file %s"), GP->outname);
+    else
+        green(_("Saved to %s\n"),  GP->outname);
+    FREE(crds);
+    FREE(surf);
 }
 
 /**
