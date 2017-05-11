@@ -49,12 +49,14 @@ void proc_WFS(){
 }
 
 void proc_DAT(){
-    int i, Zn;
+    int i, j, Zn;
     if(fabs(GP->step - DEFAULT_CRD_STEP) > DBL_EPSILON){ // user change default step
-        if((i = z_set_step(GP->step)))
+        if((i = z_set_step(GP->step))){
             WARNX(_("Can't change step to %g, value is too %s"), GP->step, i < 0 ? "small" : "big");
             return;
+        }
     }
+    if(fabs(GP->rotangle) > DBL_EPSILON) z_set_rotangle(GP->rotangle);
     if(fabs(GP->wavelength - DEFAULT_WAVELENGTH) > DBL_EPSILON){ // user want to change wavelength
         // WARNING! This option test should be before changing unit because units depends on wavelength
         if(z_set_wavelength(GP->wavelength)){
@@ -69,28 +71,61 @@ void proc_DAT(){
             return;
         }
     }
-    double *zerncoeffs = read_dat_file(GP->indat, &Zn);
-    if(!zerncoeffs){
+    if(GP->zzero) z_set_Nzero(GP->zzero);
+    datfile *dat = open_dat_file(GP->indat);
+    char *fprefix = NULL;
+    if(!GP->outname){ // default filename
+        fprefix = strdup(GP->indat);
+        char *pt = strrchr(fprefix, '.');
+        if(pt && pt != fprefix) *pt = 0;
+    }else fprefix = strdup(GP->outname);
+    if(!dat){
         WARNX(_("Bad DAT file %s"), GP->indat);
         return;
     }
-    printf("Read coefficients:\n");
-    for(i = 0; i < Zn; ++i) printf("%4d\t%g\n", i, zerncoeffs[i]);
-
-    int L;
-    polar *crds = gen_coords(&L);
+    polcrds *crds = gen_coords();
     if(!crds){
         WARNX("malloc()");
         return;
     }
-    printf("%d points\n", L);
-    double *surf = Zcompose(Zn, zerncoeffs, L, crds);
-    if(z_save_wavefront(L, crds, surf, GP->outname))
-        WARN(_("Can't open file %s"), GP->outname);
-    else
-        green(_("Saved to %s\n"),  GP->outname);
+    int Sz = crds->Sz;
+    printf("%d points\n", Sz);
+    double *surf = MALLOC(double, Sz), *surf2 = MALLOC(double, Sz);
+    for(i = 0; ; ++i){
+        printf("image %d         \r",i); fflush(stdout);
+        double *zerncoeffs = dat_read_next_line(dat, &Zn);
+        if(!zerncoeffs) break; // EOF
+        #ifdef EBUG
+        //printf("Read coefficients:\n");
+        //for(j = 0; j < Zn; ++j) printf("%4d\t%g\n", j, zerncoeffs[j]);
+        #endif
+        double *cur = Zcompose(Zn, zerncoeffs, crds);
+        for(j = 0; j < Sz; ++j){
+            double c = cur[j];
+            surf[j] += c;
+            surf2[j] += c*c;
+        }
+        free(zerncoeffs);
+        free(cur);
+    }
+    green(_("Got %d iterations, now save file\n"), i);
+    if(i > 0){
+        for(j = 0; j < Sz; ++j){
+            surf[j] /= i; // mean
+            surf2[j] = surf2[j]/i - surf[j]*surf[j]; // std
+        }
+        if(z_save_wavefront(crds, surf, surf2, fprefix))
+            WARN(_("Can't save files %s"), fprefix);
+        else
+            green(_("Saved to %s\n"),  fprefix);
+    }else{
+        WARNX(_("Couldn't read any data"));
+    }
+    FREE(fprefix);
     FREE(crds);
     FREE(surf);
+    FREE(surf2);
+    close_dat_file(dat);
 }
 
 /**
@@ -108,3 +143,4 @@ int main(int argc, char** argv){
     }
     return 0;
 }
+

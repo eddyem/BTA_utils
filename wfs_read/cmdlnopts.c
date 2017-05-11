@@ -32,12 +32,14 @@ static glob_pars  G;
 //            DEFAULTS
 // default global parameters
 glob_pars const Gdefault = {
-     .inwfs = NULL                     // input WFS file name
-    ,.indat = NULL                     // input DAT file name
-    ,.outname = "wavefront_coords.dat" // output file name
-    ,.step = DEFAULT_CRD_STEP          // coordinate step in wavefront map
-    ,.wfunits = DEFAULT_WF_UNIT        // units for wavefront measurement in WF map
-    ,.wavelength = DEFAULT_WAVELENGTH  // default wavelength
+     .inwfs = NULL                      // input WFS file name
+    ,.indat = NULL                      // input DAT file name
+    ,.outname = NULL                    // output file name prefix (default: basename of input)
+    ,.step = DEFAULT_CRD_STEP           // coordinate step in wavefront map
+    ,.wfunits = DEFAULT_WF_UNIT         // units for wavefront measurement in WF map
+    ,.wavelength = DEFAULT_WAVELENGTH   // default wavelength
+    ,.zzero = 0                         // amount of Z polynomials to be reset
+    ,.rotangle = 0.                     // wavefront rotation angle (rotate matrix to -rotangle after computing)
 };
 
 /*
@@ -50,10 +52,12 @@ myoption cmdlnopts[] = {
     // simple integer parameter with obligatory arg:
     {"wfs",         NEED_ARG, NULL, 'w',    arg_string, APTR(&G.inwfs),     _("input WFS file name")},
     {"dat",         NEED_ARG, NULL, 'd',    arg_string, APTR(&G.indat),     _("input DAT file name")},
-    {"output",      NEED_ARG, NULL, 'o',    arg_string, APTR(&G.outname),   _("output file name")},
+    {"output",      NEED_ARG, NULL, 'o',    arg_string, APTR(&G.outname),   _("output file name prefix")},
     {"step",        NEED_ARG, NULL, 's',    arg_double, APTR(&G.step),      _("coordinate step in wavefront map (R=1)")},
     {"wfunits",     NEED_ARG, NULL, 'u',    arg_string, APTR(&G.wfunits),   _("units for wavefront measurement in output WF map")},
     {"wavelength",  NEED_ARG, NULL, 'l',    arg_double, APTR(&G.wavelength),_("default wavelength (in meters, microns or nanometers), 101..9999nm")},
+    {"zerofirst",   NEED_ARG, NULL, 'z',    arg_int,    APTR(&G.zzero),     _("amount of first Zernike polynomials to be reset to 0")},
+    {"rotangle",    NEED_ARG, NULL, 'r',    arg_double, APTR(&G.rotangle),  _("wavefront rotation angle (degrees, CCW)")},
     end_option
 };
 

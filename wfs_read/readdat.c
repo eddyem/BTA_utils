@@ -99,32 +99,56 @@ int get_hdrval(char *val, char *dat, char *end){
 }
 
 /**
- * Read .dat file and get Zernike coefficients from it
+ * Open .dat file
  * @param fname (i) - .dat file name
- * @param sz    (o) - size of coefficients' array
- * @return            dynamically allocated array or NULL in case of error
+ * @return pointer to mmaped buffer or NULL
  */
-double *read_dat_file(char *fname, int *sz){
+datfile *open_dat_file(char *fname){
     if(!fname) return NULL;
-    mmapbuf *dbuf = My_mmap(fname);
-    if(!dbuf) return NULL;
-    char *dat = dbuf->data, *eptr = dat + dbuf->len;
-    if(strncasecmp(dat, "time", 4)){
+    mmapbuf *buf = My_mmap(fname);
+    if(!buf) return NULL;
+    char *data = buf->data;
+    if(strncasecmp(data, "time", 4)){
         WARNX(_("Bad header"));
         return NULL;
     }
-    int rd = 0, skipfst = get_hdrval("piston", dat, eptr), L = Z_REALLOC_STEP;
-    if(skipfst < 0){
+    char *eptr = data + buf->len;
+    int frst = get_hdrval("piston", data, eptr);
+    if(frst < 0){
         WARNX(_("Dat file don't have OSA Zernike coefficients"));
         return NULL;
     }
-    dat = nextline(dat, eptr);
+    datfile *dat = MALLOC(datfile, 1);
+    dat->buf = buf;
+    dat->eptr = eptr;
+    dat->curptr = data;
+    dat->firstcolumn = frst;
+    return dat;
+}
+
+void close_dat_file(datfile *dat){
+    My_munmap(dat->buf);
+    FREE(dat);
+}
+
+/**
+ * Read next line from .dat file and get Zernike coefficients from it
+ * @param dat   (i) - input .dat file
+ * @param sz    (o) - size of coefficients' array
+ * @return            dynamically allocated array or NULL in case of error
+ */
+double *dat_read_next_line(datfile *dat, int *sz){
+    if(!dat || !dat->buf){DBG("NULL"); return NULL;}
+    int rd = 0, L = Z_REALLOC_STEP, skipfst = dat->firstcolumn;
+    char *buf = dat->curptr, *eptr = dat->eptr;
+    buf = nextline(buf, eptr);
+    if(!buf){DBG("EOF"); return NULL;} // EOF
     double *zern = MALLOC(double, Z_REALLOC_STEP);
-    while(dat < eptr){
+    while(buf < eptr){
         double d;
-        char *next = read_double(dat, eptr, &d);
+        char *next = read_double(buf, eptr, &d);
         if(!next) break;
-        dat = next;
+        buf = next;
         if(skipfst > 0){ // skip this value
             --skipfst;
             continue;
@@ -142,5 +166,6 @@ double *read_dat_file(char *fname, int *sz){
         if(*next == '\n') break;
     }
     if(sz) *sz = rd;
+    dat->curptr = buf;
     return zern;
 }

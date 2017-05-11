@@ -25,6 +25,16 @@
 // allocate memory with quantum of this
 #define Z_REALLOC_STEP  (10)
 
-double *read_dat_file(char *fname, int *sz);
+typedef struct{
+    mmapbuf *buf;   // mmaped buffer
+    char *curptr;   // pointer to current symbol
+    char *eptr;     // pointer to end of file
+    int firstcolumn;// first column with Zernike coefficients
+    double **Rpow;  // powers of R
+} datfile;
+
+double *dat_read_next_line(datfile *dat, int *sz);
+datfile *open_dat_file(char *fname);
+void close_dat_file(datfile *dat);
 
 #endif // __READDAT_H__

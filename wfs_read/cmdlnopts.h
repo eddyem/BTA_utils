@@ -31,10 +31,12 @@
 typedef struct{
     char *inwfs;        // input WFS file name
     char *indat;        // input DAT file name
-    char *outname;      // output file name
+    char *outname;      // output file name prefix
     double step;        // coordinate step in wavefront map
     char *wfunits;      // units for wavefront measurement in WF map
     double wavelength;  // default wavelength
+    int zzero;          // amount of Z polynomials to be reset
+    double rotangle;    // wavefront rotation angle (rotate matrix to -rotangle after computing)
 } glob_pars;
 
 
