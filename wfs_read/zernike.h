@@ -44,6 +44,21 @@ typedef struct{
     int WH;         // Width/Height of matrix
 } polcrds;
 
+// for `const char * const *units` thanks to http://stackoverflow.com/a/3875555/1965803
+typedef struct{
+    double wf_coeff;            // multiplier for wavefront units (in .dat files coefficients are in meters)
+    const char * const *units;  // symbol units' names
+} wf_units;
+
+// additional components to Zernike coefficients
+typedef struct{
+    int idx;        // Znumber
+    double addval;  // additional value
+} coeff;
+
+void z_set_scale(double s);
+double z_get_scale();
+
 int z_set_step(double step);
 double z_get_step();
 
@@ -51,12 +66,21 @@ int z_set_wavelength(double w);
 double z_get_wavelength();
 
 int z_set_wfunit(char *u);
+char *z_get_wfunit();
+
 double z_get_wfcoeff();
 void z_print_wfunits();
 
 void z_set_rotangle(double angle);
+double z_get_rotangle();
 
-int z_set_Nzero(int val);
+int z_set_Nzero(int val); // setter when val > 0 and getter elsewhere
+
+void z_set_tozero(int **val);
+int z_get_tozero(int **idxs);
+
+void z_set_addcoef(char **list);
+int z_get_addcoef(coeff **vals);
 
 void convert_Zidx(int p, int *N, int *M);
 

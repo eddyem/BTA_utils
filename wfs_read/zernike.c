@@ -24,13 +24,17 @@
 #endif
 #include <math.h>
 #include <strings.h>
+#include <limits.h> // INT_MAX
 #include "zernike.h"
 #include "usefull_macros.h"
+#include "saveimg.h"
 
 #ifndef iabs
 #define iabs(a)  (((a)<(0)) ? (-a) : (a))
 #endif
 
+// scaling factor
+static double zscale = 1.;
 // coordinate step on a grid
 static double coord_step = DEFAULT_CRD_STEP;
 // default wavelength for wavefront (650nm) in meters
@@ -43,14 +47,97 @@ static double *FK = NULL;
 static char *outpunit = DEFAULT_WF_UNIT;
 // amount of first polynomials to reset
 static int Zern_zero = 0;
+// array with indexes to be reset to 0 (copy of G.tozero)
+static int* tozero = NULL;
+static int tozerosz = 0; // size of array
+
+// list of additional coefficients
+static coeff *addcoefflist = NULL;
+static int addcoefsz = 0; // its size
 // matrix rotation angle (in radians)
 static double rotangle = 0.;
+
+/**
+ * setter & getter for zscale
+ */
+void z_set_scale(double s){zscale = s;}
+double z_get_scale(){return zscale;}
+
 /**
  * Set/get value of Zern_zero
  */
 int z_set_Nzero(int val){
-    if(val > -1) Zern_zero  = val;
+    if(val > 0) Zern_zero  = val;
     return Zern_zero;
+}
+/**
+ * Fill list of coefficients to be reset
+ */
+void z_set_tozero(int **val){
+    if(!val) return;
+    size_t cur = tozerosz;
+    while(val[tozerosz]) ++tozerosz;
+    //printf("2zero: %zd\n", tozerosz);
+    tozero = realloc(tozero, tozerosz*sizeof(int));
+    if(!tozero) ERR("realloc()");
+    while(*val){
+        tozero[cur++] = **val++;
+    }
+    //for(cur = 0; cur < tozerosz; ++cur) printf(":: %d\n", tozero[cur]);
+}
+/**
+ * @return size of `tozero` array
+ * @param idxs (o) - `tozero` itself
+ */
+int z_get_tozero(int **idxs){
+    if(!idxs) return -1;
+    *idxs = tozero;
+    return tozerosz;
+}
+
+// parse additional coefficient record (N=val) and fill data
+void parse_coeff(char *rec, coeff *c){
+    if(!rec) ERRX(_("Empty record"));
+    char *s = strdup(rec);
+    if(!s) ERR("strdup()");
+    char *eq = strchr(s, '=');
+    if(!eq || *rec == '=')
+        ERRX(_("Coefficients' records should be like N=val, where N is Znumber, val is its additional value"));
+    *eq++ = 0;
+    char *endptr;
+    long tmp = strtol(s, &endptr, 0);
+    //printf("tmp=%ld, eptr=%s\n", tmp, endptr);
+    if(endptr == rec || *endptr != '\0' || tmp < 0 || tmp > INT_MAX)
+        ERRX(_("Coefficient's index should be a non-negative integer"));
+    c->idx = (int) tmp;
+    if(!str2double(&c->addval, eq)) 
+        ERRX(_("Wrong coefficient"));
+    free(s);
+}
+/**
+ * Fill list of additional coefficients
+ */
+void z_set_addcoef(char **list){
+    if(!list || !*list) return;
+    size_t cur = addcoefsz;
+    while(list[addcoefsz]) ++addcoefsz;
+    //printf("add coeffs: %zd\n", addcoefsz);
+    addcoefflist = realloc(addcoefflist, addcoefsz*sizeof(coeff));
+    if(!addcoefflist) ERR("realloc()");
+    while(*list){
+        parse_coeff(*list++, &addcoefflist[cur++]);
+    }
+    //for(cur = 0; cur < addcoefsz; ++cur) printf("coeff %d += %g\n", addcoefflist[cur].idx, addcoefflist[cur].addval);
+}
+
+/**
+ * @return length of `addcoeflist` array
+ * @param vals (o) - `addcoeflist` itself
+ */
+int z_get_addcoef(coeff **vals){
+    if(!vals) return -1;
+    *vals = addcoefflist;
+    return addcoefsz;
 }
 
 /**
@@ -90,13 +177,7 @@ double z_get_wavelength(){
     return wavelength;
 }
 
-// for `const char * const *units` thanks to http://stackoverflow.com/a/3875555/1965803
-typedef struct{
-    double wf_coeff;            // multiplier for wavefront units (in .dat files coefficients are in meters)
-    const char * const *units;  // symbol units' names
-} wf_units;
-
-wf_units wfunits[] = {
+static wf_units wfunits[] = {
     { 1.    , (const char * const []){"meter", "m", NULL}},
     {1e3    , (const char * const []){"millimeter", "mm", NULL}},
     {1e6    , (const char * const []){"micrometer", "um", "u", NULL}},
@@ -127,6 +208,10 @@ int z_set_wfunit(char *U){
         ++u;
     }
     return 1;
+}
+
+char *z_get_wfunit(){
+    return outpunit;
 }
 
 double z_get_wfcoeff(){
@@ -339,10 +424,21 @@ double *Zcompose(int Zsz, double *Zidxs, polcrds *P){
     if(!P || !P->P || !P->Rpow) return NULL;
     int i, Sz = P->Sz;
     for(i = 0; i < Zern_zero; ++i) Zidxs[i] = 0.;
+    for(i = 0; i < tozerosz; i++){
+        int C = tozero[i];
+        if(C > -1 && C < Zsz) Zidxs[C] = 0.;
+        else WARNX(_("Not zero idx %d (should be from 0 to %d)"), C, Zsz-1);
+    }
+    for(i = 0; i < addcoefsz; i++){
+        int C = addcoefflist[i].idx;
+        if(C > -1 && C < Zsz) Zidxs[C] += addcoefflist[i].addval;
+        else WARNX(_("Not change idx %d (should be from 0 to %d)"), C, Zsz-1);
+    }
     double *image = MALLOC(double, Sz);
     for(i = 0; i < Zsz; i++){ // now we fill array
         double K = Zidxs[i];
-        if(fabs(K) < DBL_EPSILON) continue; // 0.0
+        //printf("Z[%d]=%g\n", i, K);
+        if(fabs(K) < DBL_EPSILON) continue; // 0.0m
         int n, m;
         convert_Zidx(i, &n, &m);
         double *Zcoeff = zernfun(n, m, P, NULL);
@@ -389,16 +485,17 @@ int z_save_wavefront(polcrds *P, double *Z, double *std, char *fprefix){
         sum += pt;
         sum2 += pt*pt;
     }
-    sum2 *= wf_coeff, sum *= wf_coeff, max *= wf_coeff, min *= wf_coeff;
-    fprintf(f, "# Wavefront units: %ss, std by all WF: %g, Scope: %g, max: %g, min: %g\n",
-        outpunit, sum2/Sz + sum*sum/Sz/Sz, max - min, max, min);
+    double coef = wf_coeff * zscale;
+    sum2 *= coef, sum *= coef, max *= coef, min *= coef;
+    fprintf(f, "# Wavefront units: %ss, wavelength: %gnm, std by all WF: %g, Scope: %g, max: %g, min: %g\n",
+        outpunit, wavelength*1e9, sum2/Sz + sum*sum/Sz/Sz, max - min, max, min);
     if(Zern_zero) fprintf(f, "# First %d coefficients were cleared\n", Zern_zero);
     fprintf(f, "# X (-1..1)\tY (-1..1)\tZ \tstd_Z\n");
     for(i = 0, z = Z; i < Sz; ++i, ++p, ++z, ++std){
-        double x, y, s, c, r = p->r, zdat = (*z) * wf_coeff;
+        double x, y, s, c, r = p->r, zdat = (*z) * coef;
         sincos(p->theta - rotangle, &s, &c);
         x = r * c, y = r * s;
-        fprintf(f, "%6.3f\t%6.3f\t%9.3g\t%9.3g\n", x, y, zdat, (*std) * wf_coeff);
+        fprintf(f, "%6.3f\t%6.3f\t%9.3g\t%9.3g\n", x, y, zdat, (*std) * coef);
         WF[p->idx] = zdat;
         //DBG("WF[%d] = %g; x=%.1f, y=%.1f", p->idx, zdat,x,y);
     }
@@ -408,15 +505,17 @@ int z_save_wavefront(polcrds *P, double *Z, double *std, char *fprefix){
     printf("try to save to %s\n", filename);
     f = fopen(filename, "w");
     if(!f) goto returning;
-    fprintf(f, "# Wavefront data\n# Units: %ss\n# Step: %g\n", outpunit, coord_step);
+    fprintf(f, "# Wavefront data\n# Units: %ss, wavelength: %gnm\n# Step: %g\n",
+        outpunit, wavelength*1e9, coord_step);
     int x, y;
     // Invert Y axe to have matrix with right Y direction (towards up)
     for(y = WH-1; y > -1; --y){
         double *wptr = &WF[y*WH];
         for(x = 0; x < WH; ++x, ++wptr)
-            fprintf(f, "%6.3f\t", *wptr);
+            fprintf(f, "%6.3g\t", *wptr);
         fprintf(f, "\n");
     }
+    writeimg(fprefix, WH, WF);
     ret = 0;
 returning:
     FREE(filename);
@@ -433,3 +532,6 @@ void z_set_rotangle(double angle){
     printf("angle: %g\n", rotangle*180/M_PI);
 }
 
+double z_get_rotangle(){
+    return rotangle;
+}

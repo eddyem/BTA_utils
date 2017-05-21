@@ -1,0 +1,14 @@
+refresh tags:
+
+geany -g readwfs.c.tags *[hc]
+
+after that:
+Tools --> Load Tags File.
+
+read & show matrix:
+M=dlmread('WFS_06012015030446849.matrix'); M([1:3],:)=[];imagesc(M);axis square;
+
+print contour:
+[c h]=contourf(M);
+clabel(c,h)
+axis square; print -dpng wavefront_contour.png

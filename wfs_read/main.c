@@ -64,6 +64,9 @@ void proc_DAT(){
             return;
         }
     }
+    if(GP->tozero) z_set_tozero(GP->tozero);
+    if(GP->addcoef) z_set_addcoef(GP->addcoef);
+
     if(strcmp(GP->wfunits, DEFAULT_WF_UNIT)){ // user ask to change default unit
         if(z_set_wfunit(GP->wfunits)){
             WARNX(_("Bad wavefront unit: %s. Should be one of"), GP->wfunits);
@@ -135,6 +138,7 @@ int main(int argc, char** argv){
     initial_setup();
     GP = parse_args(argc, argv);
     if(!GP->inwfs && !GP->indat) ERRX(_("You should give input file name"));
+    z_set_scale(GP->scale);
     if(GP->inwfs){
         proc_WFS();
     }

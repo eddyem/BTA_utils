@@ -40,6 +40,9 @@ glob_pars const Gdefault = {
     ,.wavelength = DEFAULT_WAVELENGTH   // default wavelength
     ,.zzero = 0                         // amount of Z polynomials to be reset
     ,.rotangle = 0.                     // wavefront rotation angle (rotate matrix to -rotangle after computing)
+    ,.tozero = NULL                     // coefficients to be reset (maybe more than one time)
+    ,.addcoef = NULL                    // constant to be added (format x=c, where x is number, c is additive constant)
+    ,.scale = 1.                        // Zernike coefficients' scaling factor
 };
 
 /*
@@ -58,6 +61,9 @@ myoption cmdlnopts[] = {
     {"wavelength",  NEED_ARG, NULL, 'l',    arg_double, APTR(&G.wavelength),_("default wavelength (in meters, microns or nanometers), 101..9999nm")},
     {"zerofirst",   NEED_ARG, NULL, 'z',    arg_int,    APTR(&G.zzero),     _("amount of first Zernike polynomials to be reset to 0")},
     {"rotangle",    NEED_ARG, NULL, 'r',    arg_double, APTR(&G.rotangle),  _("wavefront rotation angle (degrees, CCW)")},
+    {"zero",        MULT_PAR, NULL, '0',    arg_int,    APTR(&G.tozero),    _("reset given Znumber to 0")},
+    {"addconst",    MULT_PAR, NULL, 'a',    arg_string, APTR(&G.addcoef),   _("add constant to given Znumber (e.g. -a4=10 adds 10 to Znum=4)")},
+    {"scale",       NEED_ARG, NULL, 'S',    arg_double, APTR(&G.scale),     _("Zernike coefficients' scaling factor")},
     end_option
 };
 

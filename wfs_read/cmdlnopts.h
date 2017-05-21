@@ -36,7 +36,10 @@ typedef struct{
     char *wfunits;      // units for wavefront measurement in WF map
     double wavelength;  // default wavelength
     int zzero;          // amount of Z polynomials to be reset
+    int **tozero;       // coefficients to be reset (maybe more than one time)
+    char **addcoef;     // constant to be added (format x=c, where x is number, c is additive constant)
     double rotangle;    // wavefront rotation angle (rotate matrix to -rotangle after computing)
+    double scale;       // Zernike coefficients' scaling factor
 } glob_pars;
 
 
