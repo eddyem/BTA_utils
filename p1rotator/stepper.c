@@ -98,9 +98,11 @@ void print_PA(double ang){
 
 #ifdef __arm__
 static void Write(int pin, int val){
+	double t0 = dtime();
     if(val) val = 1;
     digitalWrite(pin, val);
-    while(digitalRead(pin) != val);
+    while(digitalRead(pin) != val && dtime() - t0 > 1.);
+    if(digitalRead(pin) != val) WARNX("error setting pin value: need %d, got %d", val, digitalRead(pin));
 }
 static void Toggle(int pin){
     int v = digitalRead(pin);
@@ -110,15 +112,19 @@ static void Toggle(int pin){
 
 void setup_pins(){
 #ifdef __arm__
+	DBG("setup GPIO");
     wiringPiSetupGpio();
-    Write(EN_PIN, PIN_PASSIVE); // disable all @ start
-    Write(DIR_PIN, PIN_PASSIVE);
-    Write(STEP_PIN, PIN_PASSIVE);
+    DBG("setup PINs");
     pinMode(DIR_PIN, OUTPUT);
     pinMode(EN_PIN, OUTPUT);
     pinMode(STEP_PIN, OUTPUT);
     pinMode(ESW_PIN, INPUT);
+    Write(EN_PIN, PIN_PASSIVE); // disable all @ start
+    Write(DIR_PIN, PIN_PASSIVE);
+    Write(STEP_PIN, PIN_PASSIVE);
+    DBG("setup pullup");
     pullUpDnControl(ESW_PIN, PUD_UP);
+    DBG("done");
 #else // __arm__
     green("Setup GPIO\n");
 #endif // __arm__
@@ -129,17 +135,19 @@ void setup_pins(){
  */
 void stop_motor(){
 //    force_exit = 1;
-    usleep(1000);
+//    usleep(1000);
 #ifdef __arm__
     // disable motor & all other
-    pullUpDnControl(ESW_PIN, PUD_OFF);
-    pinMode(DIR_PIN, INPUT);
-    pinMode(EN_PIN, INPUT);
-    pinMode(STEP_PIN, INPUT);
+    DBG("return pin modes");
     // return values to initial state
     Write(EN_PIN, 0);
     Write(DIR_PIN, 0);
     Write(STEP_PIN, 0);
+    pinMode(DIR_PIN, INPUT);
+    //pinMode(EN_PIN, INPUT);
+    pinMode(STEP_PIN, INPUT);
+	DBG("pull control");
+    pullUpDnControl(ESW_PIN, PUD_OFF);
     DBG("STOPPED");
 #else
     green("Stop Stepper\n");
@@ -170,6 +178,7 @@ static void move_motor(int nusteps){
         dir = -1;
         nusteps = -nusteps;
     }
+    DBG("moving for %d steps", nusteps);
 #ifdef __arm__
     Write(DIR_PIN, (dir > 0) ? DIR_POSITIVE : DIR_NEGATIVE); // prepare direction
     for(; nusteps; --nusteps){
@@ -187,6 +196,7 @@ int gotozero(){
 #ifdef __arm__
     int nusteps = ONETURN_USTEPS * 1.1;
     Write(DIR_PIN, DIR_NEGATIVE);
+    DBG("go to zero position");
     for(; nusteps; --nusteps){
         Toggle(STEP_PIN);
         mk_pause(USTEP_DELAY);

@@ -37,14 +37,14 @@
 
 // End-switch - GPIO25 (leg22)
 #define ESW_PIN         (25)
-// Stepper: EN - GPIO18 (leg12), DIR - GPIO23 (leg16), STEP - GPIO24 (leg18)
+// Stepper: STEP - GPIO18 (leg12), DIR - GPIO23 (leg16), EN - GPIO24 (leg18)
 #define DIR_PIN         (23)
-#define STEP_PIN        (24)
-#define EN_PIN          (18)
+#define STEP_PIN        (18)
+#define EN_PIN          (24)
 
 // active/passive levels (depending on stepper driver connection schematic)
-#define PIN_ACTIVE      (1)
-#define PIN_PASSIVE     (0)
+#define PIN_ACTIVE      (0)
+#define PIN_PASSIVE     (1)
 
 // active level on end-switch: 0 - normally opened, 1 - normally closed
 #define ESW_ACTIVE      (0)
@@ -55,7 +55,7 @@
 
 // maximum 200 steps per second
 #define MAX_SPEED   (200)
-#define USTEP_DELAY (1./MAX_SPEED/USTEPS)
+#define USTEP_DELAY (1./MAX_SPEED/USTEPS/2)
 
 // Position angle calculation (val_Alp, val_Del, S_time - for real work)
 #define CALC_PA()       calc_PA(SrcAlpha, SrcDelta, S_time)
@@ -65,7 +65,7 @@
 
 
 // microsteps per one revolution
-#define ONETURN_USTEPS  (ONETURN_STEPS * USTEPS * GEARRAT)
+#define ONETURN_USTEPS  (ONETURN_STEPS * USTEPS * GEARRAT * 2)
 // initial (wrong) value of microsteps counter
 #define USTEPSBAD       (2*ONETURN_USTEPS)
 // minimal PA delta
