@@ -58,7 +58,8 @@
 #define USTEP_DELAY (1./MAX_SPEED/USTEPS/2)
 
 // Position angle calculation (val_Alp, val_Del, S_time - for real work)
-#define CALC_PA()       calc_PA(SrcAlpha, SrcDelta, S_time)
+//#define CALC_PA()       calc_PA(SrcAlpha, SrcDelta, S_time)
+#define CALC_PA()       calc_PA(val_Alp, val_Del, S_time)
 
 // PA value for zero end-switch (add this value to desired PA)
 #define PA_ZEROVAL      (0.)

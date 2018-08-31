@@ -331,13 +331,14 @@ void stepper_process(){
             }
         }
         if(curtime - laststeptime > target_pa_period){
+            laststeptime = curtime;
             #ifdef __arm__
             Toggle(STEP_PIN);
             #endif // __arm__
             current_usteps += dir;
-            DBG("STEP");
+            DBG("STEP, angle=%g", CALC_PA() - p_first);
+            print_PA(CALC_PA());
         }
-        print_PA(CALC_PA());
     }
 }
 
