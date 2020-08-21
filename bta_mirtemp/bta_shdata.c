@@ -1,6 +1,8 @@
 #include "bta_shdata.h"
 #include "usefull_macros.h"
 
+#include <crypt.h>
+
 #pragma pack(push, 4)
 // Main command channel (level 5)
 struct CMD_Queue mcmd = {{"Mcmd"}, 0200,0,-1,0};

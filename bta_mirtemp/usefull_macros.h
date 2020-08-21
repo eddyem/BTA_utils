@@ -93,6 +93,7 @@ extern void signals(int sig);
 #define ALLOC(type, var, size)  type * var = ((type *)my_alloc(size, sizeof(type)))
 #define MALLOC(type, size) ((type *)my_alloc(size, sizeof(type)))
 #define FREE(ptr)			do{free(ptr); ptr = NULL;}while(0)
+#define LOG(...)    do{Cl_putlogt(__VA_ARGS__); WARNX(__VA_ARGS__);}while(0)
 
 double dtime();
 
@@ -116,9 +117,12 @@ void setup_con();
 int read_console();
 int mygetchar();
 
-void restore_tty();
-void tty_init(char *comdev);
-size_t read_tty(uint8_t *buff, size_t length);
-int write_tty(uint8_t *buff, size_t length);
+typedef struct{
+    char *logpath;          // full path to logfile
+    pthread_mutex_t mutex;  // log mutex
+} Cl_log;
+
+int Cl_createlog(char *logname);
+int Cl_putlogt(const char *fmt, ...);
 
 #endif // __USEFULL_MACROS_H__

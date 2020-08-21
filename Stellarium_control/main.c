@@ -154,7 +154,11 @@ typedef struct __attribute__((__packed__)){
 	int32_t status;
 } outdata;
 
-#define ACS_CMD(a)   do{green(#a); printf("\n"); a; }while(0)
+#ifdef EBUG
+#define ACS_CMD(a)   do{green(#a); printf("\n"); }while(0)
+#else
+#define ACS_CMD(a)   do{red(#a); printf("\n"); a; }while(0)
+#endif
 /**
  * send input RA/Decl (j2000!) coordinates to tel
  * both coords are in seconds (ra in time, dec in angular)
@@ -387,8 +391,10 @@ int main(_U_ int argc, char **argv){
 	if(fabs(M_time - last) < 0.02)
 		ERRX(_("Data stale!"));
 	get_cmd_queue(&ucmd, ClientSide);
+#ifndef EBUG
 	passhash pass = {0,0};
 	get_passhash(&pass);
+#endif
 	printf(_("All OK, start socket\n"));
 
 

@@ -21,6 +21,8 @@
 
 #include "usefull_macros.h"
 
+#include <pthread.h>
+
 /**
  * function for different purposes that need to know time intervals
  * @return double value: time in seconds
@@ -247,77 +249,63 @@ int mygetchar(){ // getchar() without need of pressing ENTER
     return ret;
 }
 
+// logging
 
-/******************************************************************************\
- *                              TTY with select()
-\******************************************************************************/
-static struct termio oldtty, tty; // TTY flags
-static int comfd = -1; // TTY fd
 
-// run on exit:
-void restore_tty(){
-    if(comfd == -1) return;
-    ioctl(comfd, TCSANOW, &oldtty ); // return TTY to previous state
-    close(comfd);
-    comfd = -1;
-}
-
-#ifndef BAUD_RATE
-#define BAUD_RATE B9600
-#endif
-// init:
-void tty_init(char *comdev){
-    DBG("\nOpen port...\n");
-    if ((comfd = open(comdev,O_RDWR|O_NOCTTY|O_NONBLOCK)) < 0){
-        WARN("Can't use port %s\n",comdev);
-        ioctl(comfd, TCSANOW, &oldtty); // return TTY to previous state
-        close(comfd);
-        signals(0); // quit?
-    }
-    DBG(" OK\nGet current settings... ");
-    if(ioctl(comfd,TCGETA,&oldtty) < 0){  // Get settings
-        WARN(_("Can't get settings"));
-        signals(0);
-    }
-    tty = oldtty;
-    tty.c_lflag     = 0; // ~(ICANON | ECHO | ECHOE | ISIG)
-    tty.c_oflag     = 0;
-    tty.c_cflag     = BAUD_RATE|CS8|CREAD|CLOCAL; // 9.6k, 8N1, RW, ignore line ctrl
-    tty.c_cc[VMIN]  = 0;  // non-canonical mode
-    tty.c_cc[VTIME] = 5;
-    if(ioctl(comfd,TCSETA,&tty) < 0){
-        WARN(_("Can't set settings"));
-        signals(0);
-    }
-    DBG(" OK\n");
-}
+static Cl_log log = {0};
 /**
- * Read data from TTY
- * @param buff (o) - buffer for data read
- * @param length   - buffer len
- * @return amount of readed bytes
+ * @brief Cl_createlog - create log file: init mutex, test file open ability
+ * @param log - log structure
+ * @return 0 if all OK
  */
-size_t read_tty(uint8_t *buff, size_t length){
-    ssize_t L = 0;
-    fd_set rfds;
-    struct timeval tv;
-    int retval;
-    FD_ZERO(&rfds);
-    FD_SET(comfd, &rfds);
-    tv.tv_sec = 0; tv.tv_usec = 50000; // wait for 50ms
-    retval = select(comfd + 1, &rfds, NULL, NULL, &tv);
-    if (!retval) return 0;
-    if(FD_ISSET(comfd, &rfds)){
-        if((L = read(comfd, buff, length)) < 1) return 0;
+int Cl_createlog(char *logname){
+    if(log.logpath){
+        FREE(log.logpath);
+        pthread_mutex_destroy(&log.mutex);
     }
-    return (size_t)L;
-}
-
-int write_tty(uint8_t *buff, size_t length){
-    ssize_t L = write(comfd, buff, length);
-    if((size_t)L != length){
-        WARN("Write error!");
-        return 1;
+    FILE *logfd = fopen(logname, "a");
+    if(!logfd){
+        WARN("Can't open log file");
+        return 2;
+    }
+    log.logpath = strdup(logname);
+    fclose(logfd);
+    if(pthread_mutex_init(&log.mutex, NULL)){
+        WARN("Can't init log mutes");
+        return 3;
     }
     return 0;
 }
+
+/**
+ * @brief Cl_putlog - put message to log file with/without timestamp
+ * @param timest - ==1 to put timestamp
+ * @param log - pointer to log structure
+ * @param lvl - message loglevel (if lvl > loglevel, message won't be printed)
+ * @param fmt - format and the rest part of message
+ * @return amount of symbols saved in file
+ */
+int Cl_putlogt(const char *fmt, ...){
+    if(pthread_mutex_lock(&log.mutex)){
+        WARN("Can't lock log mutex");
+        return 0;
+    }
+    int i = 0;
+    FILE *logfd = fopen(log.logpath, "a");
+    if(!logfd) goto rtn;
+    char strtm[128];
+    time_t t = time(NULL);
+    struct tm *curtm = localtime(&t);
+    strftime(strtm, 128, "%Y/%m/%d-%H:%M:%S", curtm);
+    i = fprintf(logfd, "%s\t", strtm);
+    va_list ar;
+    va_start(ar, fmt);
+    i += vfprintf(logfd, fmt, ar);
+    va_end(ar);
+    i += fprintf(logfd, "\n");
+    fclose(logfd);
+rtn:
+    pthread_mutex_unlock(&log.mutex);
+    return i;
+}
+

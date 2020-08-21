@@ -1,9 +1,8 @@
 PROGRAM = bta_mirtemp
 LDFLAGS = -lcrypt 
-#-lm -lsla
 SRCS = $(wildcard *.c)
 CC = gcc
-DEFINES = -D_XOPEN_SOURCE=666
+DEFINES = -D_XOPEN_SOURCE=1111 -D_GNU_SOURCE 
 # -DEBUG
 CXX = gcc
 CFLAGS = -Wall -Werror -Wextra $(DEFINES) -pthread
