@@ -21,6 +21,8 @@ const double zeroV  = 1.0;
 const double scaleT = 50.0/(5.-1.);   /* New: 1:5V -> -20:+30dgr */
 const double zeroT2  = -19.1;         /* -20.0 + 0.9 Tind (16.11.2012)*/
 
+#define RK_Precipitations 0x000008 /*Din RK: датчик появления осадков (на метеомачте) */
+
 static int stop_prog = 0;
 static char *myname;
 
@@ -301,6 +303,33 @@ int main (int argc, char *argv[])
            ctm=0;
         }
         tlast=t;
+     }else if(idr==0x21){      /* принят код RK от PEP-контроллера */
+         static double off_time = 0.;
+         static double last_msg_time = 0.;
+         static char msg[30] = " Туман или осадки.";
+         static int o_rcode = 0;
+         rcode = ((unsigned int)rdata[0]<<16)|((unsigned int)rdata[1]<<8)|rdata[2];
+         if(rcode & RK_Precipitations){
+             if(o_rcode & RK_Precipitations){ // датчик осадков имени Данилова на метео-мачте
+                 if(fabs(M_time-Precip_time>60.)){ // датчик осадков включен 2 считывания подряд
+                     if(Tel_State!=Stopping && Dome_State!=D_Off && fabs(M_time-last_msg_time>30.)){ // реагировать на него не чаще раза в минуту
+                         *msg = MesgFault; // выдать сообщение если идут реальные наблюдения
+                         SendMessage(msg);
+                         last_msg_time = M_time;
+                     }
+                     if(fabs(M_time-off_time)>3.){ // постоянно включен минимум 3сек
+                         Precip_time = M_time; /* информировать другие программы */
+                     }
+                 }
+             }else{ // датчик осадков только что включился
+                 if(fabs(M_time-last_msg_time>600.)){ // выдавать сообщение раз в 10 мин
+                      *msg = MesgWarn;
+                      SendMessage(msg);
+                      last_msg_time = M_time;
+                 }
+             }
+         }else off_time = M_time;
+         o_rcode = rcode;
      }
      fflush(stdout);
       }

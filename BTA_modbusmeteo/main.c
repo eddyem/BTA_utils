@@ -28,29 +28,9 @@ int gotsegm = 0; // used also in bta_meteo_modbus.c
 static pid_t childpid = 0;
 
 void clear_flags(){
-    WARNX("Clear flags");
     LOG("Clear flags");
     if(!gotsegm) return;
-    if(MeteoMode & NET_HMD){ // humidity now isn't from net
-       MeteoMode &= ~NET_HMD;
-       if(MeteoMode & SENSOR_HMD)
-           MeteoMode &= ~SENSOR_HMD;
-    }
-    if(MeteoMode & NET_WND){ // wind
-       MeteoMode &= ~NET_WND;
-       if(MeteoMode & SENSOR_WND)
-           MeteoMode &= ~SENSOR_WND;
-    }
-    if(MeteoMode & NET_B){ // pressure
-       MeteoMode &= ~NET_B;
-       if(MeteoMode & SENSOR_B)
-           MeteoMode &= ~SENSOR_B;
-    }
-    if(MeteoMode & NET_T1){ // ext. temperature
-       MeteoMode &= ~NET_T1;
-       if(MeteoMode & SENSOR_T1)
-           MeteoMode &= ~SENSOR_T1;
-    }
+    MeteoMode &= ~(SENSOR_HMD | SENSOR_WND | SENSOR_B | SENSOR_T1);
 }
 
 void signals(int sig){
@@ -69,8 +49,8 @@ void signals(int sig){
         case SIGSEGV:
         case SIGTERM:
              signal(SIGALRM, SIG_IGN);
-             LOG("%s - Stop!", strsignal(sig));
              if(childpid){ // master process
+                 LOG("%s - Stop!", strsignal(sig));
                  clear_flags();
              }
              exit(sig);
@@ -104,7 +84,7 @@ int main(int argc, char *argv[]){
             LOG("create child with PID %d", childpid);
             wait(NULL);
             LOG("child %d died\n", childpid);
-            sleep(1);
+            sleep(30);
         }else{
             prctl(PR_SET_PDEATHSIG, SIGTERM); // send SIGTERM to child when parent dies
             break; // go out to normal functional
@@ -118,7 +98,6 @@ int main(int argc, char *argv[]){
     }
 
     time_t tlast = time(NULL);
-    int errlogged = FALSE;
     while(1){
         if(!gotsegm){
             sdat.mode |= 0200;
@@ -126,15 +105,13 @@ int main(int argc, char *argv[]){
             gotsegm = get_shm_block(&sdat, ClientSide);
             if(!gotsegm){
                 LOG("Can't find SHM segment");
+                signals(SIGTERM);
             }else get_cmd_queue(&ocmd, ClientSide);
         }
         if(time(NULL) - tlast > 60){ // no signal for 5 minutes - clear flags
-            if(!errlogged){
-                LOG("5 minutes - no signal!");
-                errlogged = TRUE;
-            }
-            tlast = time(NULL);
+            LOG("1 minute - no signal!");
             clear_flags(); // return to Z1000 meteo
+            return 1;
         }
         params_ans a = check_meteo_params();
         if(a == ANS_LOSTCONN){
@@ -142,7 +119,6 @@ int main(int argc, char *argv[]){
             return 1;
         }
         if(a == ANS_OK){
-            errlogged = FALSE;
             tlast = time(NULL);
         }
     }

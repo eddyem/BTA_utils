@@ -3,7 +3,7 @@ LDFLAGS = -lcrypt
 SRCS = $(wildcard *.c)
 CC = gcc
 DEFINES = -D_XOPEN_SOURCE=1111 -D_GNU_SOURCE 
-DEFINES += -DEBUG
+#DEFINES += -DEBUG
 CXX = gcc
 CFLAGS = -std=gnu99 -Wall -Werror -Wextra $(DEFINES) -pthread
 OBJS = $(SRCS:.c=.o)

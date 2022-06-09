@@ -82,12 +82,18 @@ static int crc_check(uint8_t *buffer, int length){
     uint8_t byte;
     uint16_t crc = 0xFFFF;
     int valid_crc;
+    #ifdef EBUG
+    printf("buffer: ");
+    for(int i = 0; i < length; ++i) printf("%02x ", buffer[i]);
+    printf("\n");
+    #endif
     while (length-- > 2) {
         byte = *buffer++ ^ crc;
         crc >>= 8;
         crc ^= crc16_table[byte];
     }
     valid_crc = (crc >> 8) == buffer[1] && (crc & 0xFF) == buffer[0];
+    DBG("CRC %s", valid_crc ? "OK" : "bad");
     return valid_crc;
 }
 
@@ -155,11 +161,15 @@ params_ans check_meteo_params(){
         timeout.tv_sec = 0;
         timeout.tv_usec = 1500; // 1.5ms pause
 
-        if((res = select(portfd + 1, &set, NULL, NULL, &timeout)) < 0 && errno != EINTR)
+        if((res = select(portfd + 1, &set, NULL, NULL, &timeout)) < 0 && errno != EINTR){
+            WARN("lost connection (select)");
             return ANS_LOSTCONN;
+        }
         if(res > 0){
-            if ((n_bytes = read(portfd, buffer + size, MODBUS_MAX_PACKET_SIZE - size)) < 0)
+            if ((n_bytes = read(portfd, buffer + size, MODBUS_MAX_PACKET_SIZE - size)) < 0){
+        	WARN("lost connection (read)");
                 return ANS_LOSTCONN;
+    	    }
             size += n_bytes;
             if(n_bytes) continue;
         }
@@ -176,9 +186,9 @@ params_ans check_meteo_params(){
                             DBG("wind speed");
                             meteoflags |= WSFLAG;
                             if(gotsegm && !(MeteoMode & INPUT_WND)){ // not entered by hands
-                                DBG("oldvnd");
                                 val_Wnd = f;
-                                MeteoMode |= (SENSOR_WND|NET_WND);
+                                MeteoMode &= ~NET_WND;
+                                MeteoMode |= SENSOR_WND;
                             }
                         break;
                         case REG_WDIR:
@@ -190,7 +200,8 @@ params_ans check_meteo_params(){
                             meteoflags |= TFLAG;
                             if(gotsegm && !(MeteoMode & INPUT_T1)){
                                 val_T1 = f;
-                                MeteoMode |= (SENSOR_WND|NET_WND);
+                                MeteoMode &= ~NET_T1;
+                                MeteoMode |= SENSOR_T1;
                             }
                         break;
                         case REG_HUM:
@@ -198,7 +209,8 @@ params_ans check_meteo_params(){
                             meteoflags |= HFLAG;
                             if(gotsegm && !(MeteoMode & INPUT_HMD)){
                                 val_Hmd = f;
-                                MeteoMode |= (SENSOR_HMD|NET_HMD);
+                                MeteoMode &= ~NET_HMD;
+                                MeteoMode |= SENSOR_HMD;
                             }
                         break;
                         case REG_DEW:
@@ -210,7 +222,8 @@ params_ans check_meteo_params(){
                             meteoflags |= PFLAG;
                             if(gotsegm && !(MeteoMode & INPUT_B)){
                                 val_B = f;
-                                MeteoMode |= (SENSOR_B|NET_B);
+                                MeteoMode &= ~NET_B;
+                                MeteoMode |= SENSOR_B;
                             }
                         break;
                         default:
