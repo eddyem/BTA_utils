@@ -116,6 +116,7 @@ int main(int argc, char *argv[]){
         params_ans a = check_meteo_params();
         if(a == ANS_LOSTCONN){
             LOG("Lost connection with device, reconnect!");
+            clear_flags();
             return 1;
         }
         if(a == ANS_OK){

@@ -155,7 +155,8 @@ params_ans check_meteo_params(){
     struct timeval timeout;
     fd_set set;
     time_t tstart = time(NULL);
-    while(n_bytes){
+    int ctr = 15; // max 15 tries
+    while(ctr--) while(n_bytes){
         FD_ZERO(&set);
         FD_SET(portfd, &set);
         timeout.tv_sec = 0;
