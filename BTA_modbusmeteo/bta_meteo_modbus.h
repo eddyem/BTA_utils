@@ -20,12 +20,13 @@
 #define BTA_METEO_MODBUS_H__
 
 // data reading timeout (in seconds)
-#define METEO_TIMEOUT   5
+#define METEO_TIMEOUT   15
 
 typedef  enum{
     ANS_OK,         // all OK
     ANS_LOSTCONN,   // lost connection
-    ANS_NOTFULL     // got not full dataset (or nothing at all)
+    ANS_NODATA,     // no data yet
+//    ANS_NOTFULL     // got not full dataset (or nothing at all)
 } params_ans;
 
 int connect2tty();

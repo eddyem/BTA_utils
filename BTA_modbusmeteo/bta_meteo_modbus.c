@@ -82,18 +82,20 @@ static int crc_check(uint8_t *buffer, int length){
     uint8_t byte;
     uint16_t crc = 0xFFFF;
     int valid_crc;
+    /*
     #ifdef EBUG
     printf("buffer: ");
     for(int i = 0; i < length; ++i) printf("%02x ", buffer[i]);
     printf("\n");
     #endif
+    */
     while (length-- > 2) {
         byte = *buffer++ ^ crc;
         crc >>= 8;
         crc ^= crc16_table[byte];
     }
     valid_crc = (crc >> 8) == buffer[1] && (crc & 0xFF) == buffer[0];
-    DBG("CRC %s", valid_crc ? "OK" : "bad");
+    if(!valid_crc) DBG("CRC BAD");
     return valid_crc;
 }
 
@@ -150,12 +152,12 @@ params_ans check_meteo_params(){
     if(portfd < 0) return ANS_LOSTCONN;
     int n_bytes = -1, res, size = 0;
     uint8_t meteoflags = 0;
-    uint16_t lastpar = 0;
+    static uint16_t lastpar = 0;
     unsigned char buffer[MODBUS_MAX_PACKET_SIZE];
     struct timeval timeout;
     fd_set set;
-    time_t tstart = time(NULL);
-    int ctr = 50; // max 50 tries
+    //time_t tstart = time(NULL);
+    int ctr = 30; // max 30 tries
     while(ctr--){
         FD_ZERO(&set);
         FD_SET(portfd, &set);
@@ -173,13 +175,21 @@ params_ans check_meteo_params(){
     	    }
             size += n_bytes;
             if(n_bytes) continue;
+        }else if(size == 0){
+            //DBG("no data");
+            return ANS_NODATA;
         }
+        DBG("Ctr=%d, size=%d, res=%d", ctr, size, res);
         // read all or end of packet
         if(size > 0 && res == 0 && (size == REQ_LEN || size == ANS_LEN)){
             if(crc_check(buffer, size)){
                 if(size == REQ_LEN){
+                    DBG("request");
+                    ctr = 30;
                     lastpar = buffer[2] << 8 | buffer[3];
                 }else if(size == ANS_LEN){
+                    ctr = 30;
+                    DBG("answer");
                     uint16_t val = buffer[3] << 8 | buffer[4];
                     int prval = 1;
                     float f = (float)val / 10.f;
@@ -231,19 +241,26 @@ params_ans check_meteo_params(){
                         default:
                             prval = 0;
                     }
-                    if(prval) DBG("=%.1f\n", f);
                     lastpar = 0;
+                    if(prval){
+                        DBG("=%.1f\n", f);
+                        return ANS_OK;
+                    }
                 }
             }
             size = 0;
         }
+        /*
         if(meteoflags == ALLFLAGS){
             DBG("Got all data");
             return ANS_OK;
         }
-        if(time(NULL) - tstart >= METEO_TIMEOUT) return ANS_NOTFULL;
+        if(time(NULL) - tstart >= METEO_TIMEOUT){
+            DBG("Timeout, not all data meteoflags=0x%02X instead of 0x%02X", meteoflags, ALLFLAGS);
+            return ANS_NODATA;
+        }*/
     }
-    return ANS_NOTFULL;
+    return ANS_NODATA;
 }
 
 
