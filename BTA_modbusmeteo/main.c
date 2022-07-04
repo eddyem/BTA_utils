@@ -114,6 +114,7 @@ int main(int argc, char *argv[]){
             return 1;
         }
         params_ans a = check_meteo_params();
+        DBG("chk_meteo: %d", a);
         if(a == ANS_LOSTCONN){
             LOG("Lost connection with device, reconnect!");
             clear_flags();

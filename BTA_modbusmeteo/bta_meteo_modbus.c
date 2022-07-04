@@ -155,8 +155,8 @@ params_ans check_meteo_params(){
     struct timeval timeout;
     fd_set set;
     time_t tstart = time(NULL);
-    int ctr = 15; // max 15 tries
-    while(ctr--) while(n_bytes){
+    int ctr = 50; // max 50 tries
+    while(ctr--){
         FD_ZERO(&set);
         FD_SET(portfd, &set);
         timeout.tv_sec = 0;
@@ -174,7 +174,8 @@ params_ans check_meteo_params(){
             size += n_bytes;
             if(n_bytes) continue;
         }
-        if(size > 0 && (res == 0 || size >= MODBUS_MAX_PACKET_SIZE || n_bytes == 0)) {
+        // read all or end of packet
+        if(size > 0 && res == 0 && (size == REQ_LEN || size == ANS_LEN)){
             if(crc_check(buffer, size)){
                 if(size == REQ_LEN){
                     lastpar = buffer[2] << 8 | buffer[3];
