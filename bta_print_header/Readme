@@ -1,0 +1,1 @@
+This daemon uses bta_control_net-x86_64 to create and update file with FITS-header of BTA TCS data.
