@@ -198,9 +198,11 @@ params_ans check_meteo_params(){
                             DBG("wind speed");
                             meteoflags |= WSFLAG;
                             if(gotsegm && !(MeteoMode & INPUT_WND)){ // not entered by hands
+                                if(f >= 0.f && f < 200.f){
                                 val_Wnd = f;
                                 MeteoMode &= ~NET_WND;
                                 MeteoMode |= SENSOR_WND;
+                                }
                             }
                         break;
                         case REG_WDIR:
@@ -211,18 +213,22 @@ params_ans check_meteo_params(){
                             DBG("air temperature");
                             meteoflags |= TFLAG;
                             if(gotsegm && !(MeteoMode & INPUT_T1)){
+                                if(f > -40.f && f < 40.f){
                                 val_T1 = f;
                                 MeteoMode &= ~NET_T1;
                                 MeteoMode |= SENSOR_T1;
+                                }
                             }
                         break;
                         case REG_HUM:
                             DBG("humidity");
                             meteoflags |= HFLAG;
                             if(gotsegm && !(MeteoMode & INPUT_HMD)){
+                                if(f >= 0.f && f <= 100.f){
                                 val_Hmd = f;
                                 MeteoMode &= ~NET_HMD;
                                 MeteoMode |= SENSOR_HMD;
+                                }
                             }
                         break;
                         case REG_DEW:
@@ -233,9 +239,11 @@ params_ans check_meteo_params(){
                             f *= 760.f/1013.f; // convert hPa->mmHg
                             meteoflags |= PFLAG;
                             if(gotsegm && !(MeteoMode & INPUT_B)){
+                                if(f > 500.f && f < 700.f){
                                 val_B = f;
                                 MeteoMode &= ~NET_B;
                                 MeteoMode |= SENSOR_B;
+                                }
                             }
                         break;
                         default:
