@@ -190,7 +190,7 @@ params_ans check_meteo_params(){
                 }else if(size == ANS_LEN){
                     ctr = 30;
                     DBG("answer");
-                    uint16_t val = buffer[3] << 8 | buffer[4];
+                    int16_t val = buffer[3] << 8 | buffer[4];
                     int prval = 1;
                     float f = (float)val / 10.f;
                     switch(lastpar){
