@@ -82,13 +82,13 @@ static int crc_check(uint8_t *buffer, int length){
     uint8_t byte;
     uint16_t crc = 0xFFFF;
     int valid_crc;
-    /*
+
     #ifdef EBUG
     printf("buffer: ");
     for(int i = 0; i < length; ++i) printf("%02x ", buffer[i]);
     printf("\n");
     #endif
-    */
+
     while (length-- > 2) {
         byte = *buffer++ ^ crc;
         crc >>= 8;
@@ -181,80 +181,96 @@ params_ans check_meteo_params(){
         }
         DBG("Ctr=%d, size=%d, res=%d", ctr, size, res);
         // read all or end of packet
-        if(size > 0 && res == 0 && (size == REQ_LEN || size == ANS_LEN)){
-            if(crc_check(buffer, size)){
-                if(size == REQ_LEN){
-                    DBG("request");
-                    ctr = 30;
-                    lastpar = buffer[2] << 8 | buffer[3];
-                }else if(size == ANS_LEN){
-                    ctr = 30;
-                    DBG("answer");
-                    int16_t val = buffer[3] << 8 | buffer[4];
-                    int prval = 1;
-                    float f = (float)val / 10.f;
-                    switch(lastpar){
-                        case REG_WSPEED:
-                            DBG("wind speed");
-                            meteoflags |= WSFLAG;
-                            if(gotsegm && !(MeteoMode & INPUT_WND)){ // not entered by hands
-                                if(f >= 0.f && f < 200.f){
-                                val_Wnd = f;
-                                MeteoMode &= ~NET_WND;
-                                MeteoMode |= SENSOR_WND;
-                                }
-                            }
-                        break;
-                        case REG_WDIR:
-                            DBG("wind direction");
-                            //meteoflags |= WDFLAG;
-                        break;
-                        case REG_TAIR:
-                            DBG("air temperature");
-                            meteoflags |= TFLAG;
-                            if(gotsegm && !(MeteoMode & INPUT_T1)){
-                                if(f > -40.f && f < 40.f){
-                                val_T1 = f;
-                                MeteoMode &= ~NET_T1;
-                                MeteoMode |= SENSOR_T1;
-                                }
-                            }
-                        break;
-                        case REG_HUM:
-                            DBG("humidity");
-                            meteoflags |= HFLAG;
-                            if(gotsegm && !(MeteoMode & INPUT_HMD)){
-                                if(f >= 0.f && f <= 100.f){
-                                val_Hmd = f;
-                                MeteoMode &= ~NET_HMD;
-                                MeteoMode |= SENSOR_HMD;
-                                }
-                            }
-                        break;
-                        case REG_DEW:
-                            DBG("dewpoint");
-                        break;
-                        case REG_PRES:
-                            DBG("pressure");
-                            f *= 760.f/1013.f; // convert hPa->mmHg
-                            meteoflags |= PFLAG;
-                            if(gotsegm && !(MeteoMode & INPUT_B)){
-                                if(f > 500.f && f < 700.f){
-                                val_B = f;
-                                MeteoMode &= ~NET_B;
-                                MeteoMode |= SENSOR_B;
-                                }
-                            }
-                        break;
-                        default:
-                            prval = 0;
-                    }
+        if(size > 0 && res == 0 && (size == REQ_LEN || size == ANS_LEN || size == REQ_LEN + ANS_LEN)){
+            int16_t val = 0;
+            if(size == REQ_LEN){ // request from master
+                if(!crc_check(buffer, size)){
                     lastpar = 0;
-                    if(prval){
-                        DBG("=%.1f\n", f);
-                        return ANS_OK;
-                    }
+                    continue;
                 }
+                DBG("request");
+                lastpar = buffer[2] << 8 | buffer[3];
+                continue;
+            }
+            if(size == ANS_LEN){
+                if(!crc_check(buffer, size)){
+                    lastpar = 0;
+                    continue;
+                }
+                DBG("answer");
+                val = buffer[3] << 8 | buffer[4];
+            }else if(size == REQ_LEN + ANS_LEN){
+                if(!crc_check(buffer, REQ_LEN) || !crc_check(buffer+REQ_LEN, ANS_LEN)){
+                    lastpar = 0;
+                    continue;
+                }
+                DBG("both request and answer");
+                lastpar = buffer[2] << 8 | buffer[3];
+                val = buffer[3 + REQ_LEN] << 8 | buffer[4 + REQ_LEN];
+            }
+            ctr = 30;
+            int prval = 1;
+            float f = (float)val / 10.f;
+            switch(lastpar){
+                case REG_WSPEED:
+                    DBG("wind speed");
+                    meteoflags |= WSFLAG;
+                    if(gotsegm && !(MeteoMode & INPUT_WND)){ // not entered by hands
+                        if(f >= 0.f && f < 200.f){
+                        val_Wnd = f;
+                        MeteoMode &= ~NET_WND;
+                        MeteoMode |= SENSOR_WND;
+                        }
+                    }
+                break;
+                case REG_WDIR:
+                    DBG("wind direction");
+                    //meteoflags |= WDFLAG;
+                break;
+                case REG_TAIR:
+                    DBG("air temperature");
+                    meteoflags |= TFLAG;
+                    if(gotsegm && !(MeteoMode & INPUT_T1)){
+                        if(f > -40.f && f < 40.f){
+                        val_T1 = f;
+                        MeteoMode &= ~NET_T1;
+                        MeteoMode |= SENSOR_T1;
+                        }
+                    }
+                break;
+                case REG_HUM:
+                    DBG("humidity");
+                    meteoflags |= HFLAG;
+                    if(gotsegm && !(MeteoMode & INPUT_HMD)){
+                        if(f >= 0.f && f <= 100.f){
+                        val_Hmd = f;
+                        MeteoMode &= ~NET_HMD;
+                        MeteoMode |= SENSOR_HMD;
+                        }
+                    }
+                break;
+                case REG_DEW:
+                    DBG("dewpoint");
+                break;
+                case REG_PRES:
+                    DBG("pressure");
+                    f *= 760.f/1013.f; // convert hPa->mmHg
+                    meteoflags |= PFLAG;
+                    if(gotsegm && !(MeteoMode & INPUT_B)){
+                        if(f > 500.f && f < 700.f){
+                        val_B = f;
+                        MeteoMode &= ~NET_B;
+                        MeteoMode |= SENSOR_B;
+                        }
+                    }
+                break;
+                default:
+                    prval = 0;
+            }
+            lastpar = 0;
+            if(prval){
+                DBG("=%.1f\n", f);
+                return ANS_OK;
             }
             size = 0;
         }
