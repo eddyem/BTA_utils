@@ -1,7 +1,7 @@
 # run `make DEF=...` to add extra defines
 PROGRAM := bta_print_header
 LDFLAGS := -fdata-sections -ffunction-sections -Wl,--gc-sections -Wl,--discard-all
-LDFLAGS += -lusefull_macros
+LDFLAGS += -lusefull_macros -lm -lerfa
 SRCS := $(wildcard *.c)
 DEFINES := $(DEF) -D_GNU_SOURCE -D_XOPEN_SOURCE=1111
 OBJDIR := mk

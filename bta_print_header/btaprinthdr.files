@@ -1,7 +1,10 @@
+airmass.inc
+am.c
 bta_print.c
 bta_print.h
 bta_shdata.c
 bta_shdata.h
+bta_site.h
 cmdlnopts.c
 cmdlnopts.h
 main.c
