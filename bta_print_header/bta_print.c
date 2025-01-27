@@ -381,6 +381,8 @@ int print_header(_U_ const char *path){
         VALD(corZ);
         WRHDR("ZCORR", val, "Z correction (current - source)");
     }
+    VALD(DUT1);
+    WRHDR("DUT1", val, "DUT1 = UT1 - UTC");
 /*
     double az,zd;//,pa;
     calc_AZ(val_Alp, val_Del, sidtm, &az, &zd);
