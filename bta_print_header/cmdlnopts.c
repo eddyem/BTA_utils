@@ -41,7 +41,7 @@ glob_pars const Gdefault = {
  * Define command line options by filling structure:
  *  name    has_arg flag    val     type        argptr          help
 */
-myoption cmdlnopts[] = {
+sl_option_t cmdlnopts[] = {
     {"help",    NO_ARGS,    NULL,   'h', arg_none,      APTR(&help),        N_("show this help")},
     {"out",     NEED_ARG,   NULL,   'o', arg_string,    APTR(&G.outfile),   N_("output file name")},
     {"refresh", NEED_ARG,   NULL,   'r', arg_double,    APTR(&G.refresh),   N_("refresh rate (0.1-30s; default: 0.5)")},
@@ -61,8 +61,8 @@ glob_pars *parse_args(int argc, char **argv){
     void *ptr;
     ptr = memcpy(&G, &Gdefault, sizeof(G)); assert(ptr);
     // parse arguments
-    parseargs(&argc, &argv, cmdlnopts);
-    if(help) showhelp(-1, cmdlnopts);
+    sl_parseargs(&argc, &argv, cmdlnopts);
+    if(help) sl_showhelp(-1, cmdlnopts);
     if(argc > 0){
         G.outfile = strdup(argv[0]);
         if(argc > 1){

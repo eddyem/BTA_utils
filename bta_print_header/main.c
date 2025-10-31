@@ -50,7 +50,7 @@ void signals(int signo){
 
 int main(int argc, char **argv){
     char *self = strdup(argv[0]);
-    initial_setup();
+    sl_init();
     G = parse_args(argc, argv);
     if(!G->outfile){
         ERRX("Point output file name");
@@ -61,7 +61,7 @@ int main(int argc, char **argv){
     FILE *f = fopen(G->outfile, "w");
     if(!f) ERRX("Can't create file %s", G->outfile);
     fclose(f); unlink(G->outfile);
-    check4running(self, G->pidfile);
+    sl_check4running(self, G->pidfile);
     signal(SIGINT, signals);
     signal(SIGQUIT, signals);
     signal(SIGABRT, signals);
@@ -74,9 +74,9 @@ int main(int argc, char **argv){
     while(1){
         childpid = fork();
         if(childpid){ // master
-            double t0 = dtime();
+            double t0 = sl_dtime();
             wait(NULL);
-            if(dtime() - t0 < 1.) pause += 5;
+            if(sl_dtime() - t0 < 1.) pause += 5;
             else pause = 1;
             if(pause > 900) pause = 900;
             sleep(pause); // wait a little before respawn
