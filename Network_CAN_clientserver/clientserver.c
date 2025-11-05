@@ -26,7 +26,7 @@
 #include "parsecanmsgs.h"
 
 static pthread_t clientthread;
-sl_sock_t *serialsock = NULL;
+static sl_sock_t *serialsock = NULL, *serversock = NULL;
 
 #define CMDIN       "in"
 #define CMDOUT      "out"
@@ -56,6 +56,11 @@ static commands allcommands[] = {
     {NULL, 0, 0}
 };
 
+void killsockets(){
+    if(serialsock) sl_sock_delete(&serialsock);
+    if(serversock) sl_sock_delete(&serversock);
+}
+
 static int Relay1cmds(CAN_message *msg, char buf[BUFSIZ]){
     int L = 0;
     uint16_t cmd = MSGP_GET_CMD(msg);
@@ -68,6 +73,7 @@ static int Relay1cmds(CAN_message *msg, char buf[BUFSIZ]){
     }
     if(!c->textcmd) return 0;
     DBG("found text cmd is %s (%u)", c->textcmd, data);
+    //L = snprintf(buf, BUFSIZ-1, "%s=%u\n", c->textcmd, data);
     if(par == NO_PARNO) L = snprintf(buf, BUFSIZ-1, "%s=%u\n", c->textcmd, data);
     else L = snprintf(buf, BUFSIZ-1, "%s[%d]=%u\n", c->textcmd, par, data);
     return L;
@@ -87,7 +93,7 @@ static void gotCANans(CAN_message *msg){
     }
     if(L < 1) return;
     DBG("BUF: %s", buf);
-    int N = sl_sock_sendall((uint8_t*) buf, L);
+    int N = sl_sock_sendall(serversock, (uint8_t*) buf, L);
     green("Send to %d clients\n", N);
 }
 
@@ -204,14 +210,23 @@ static void toomuch(int fd){
     LOGWARN("Client fd=%d tried to connect after MAX reached", fd);
 }
 // new connections handler
-static void connected(sl_sock_t *c){
+static int connected(sl_sock_t *c){
     if(c->type == SOCKT_UNIX) LOGMSG("New client fd=%d connected", c->fd);
     else LOGMSG("New client fd=%d, IP=%s connected", c->fd, c->IP);
+    // here we can change client's IP and return FALSE to close it
+    return TRUE;
 }
 // disconnected handler
 static void disconnected(sl_sock_t *c){
     if(c->type == SOCKT_UNIX) LOGMSG("Disconnected client fd=%d", c->fd);
     else LOGMSG("Disconnected client fd=%d, IP=%s", c->fd, c->IP);
+}
+static sl_sock_hresult_e defhandler(struct sl_sock *s, const char *str){
+    if(!s || !str) return RESULT_FAIL;
+    sl_sock_sendstrmessage(s, "You entered wrong command:\n```\n");
+    sl_sock_sendstrmessage(s, str);
+    sl_sock_sendstrmessage(s, "\n```\nTry \"help\"\n");
+    return RESULT_SILENCE;
 }
 
 static sl_sock_hitem_t handlers[] = {
@@ -228,13 +243,17 @@ static sl_sock_hitem_t handlers[] = {
 };
 
 sl_sock_t *RunSrv(sl_socktype_e type, const char *node){
-    sl_sock_maxclhandler(toomuch);
-    sl_sock_connhandler(connected);
-    sl_sock_dischandler(disconnected);
-    return sl_sock_run_server(type, node, 4096, handlers);
+    serversock = sl_sock_run_server(type, node, 4096, handlers);
+    if(!serversock) return NULL;
+    sl_sock_maxclhandler(serversock, toomuch);
+    sl_sock_connhandler(serversock, connected);
+    sl_sock_dischandler(serversock, disconnected);
+    sl_sock_defmsghandler(serversock, defhandler);
+    return serversock;
 }
 
 sl_sock_t *RunClt(sl_socktype_e type, const char *node){
+    DBG("run client type %d node %s", type, node);
     serialsock = sl_sock_run_client(type, node, 4096);
     if(!serialsock){
         DBG("Can't run client");

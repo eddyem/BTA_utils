@@ -22,3 +22,4 @@
 
 sl_sock_t *RunSrv(sl_socktype_e type, const char *node);
 sl_sock_t *RunClt(sl_socktype_e type, const char *node);
+void killsockets();

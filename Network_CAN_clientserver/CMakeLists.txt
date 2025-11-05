@@ -11,7 +11,7 @@ message("VERSION: ${VERSION}")
 
 # list of options
 option(DEBUG "Compile in debug mode" OFF)
-option(EXAMPLES "Compile also all examples" ON)
+#option(EXAMPLES "Compile also all examples" ON)
 
 # default flags
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -W -Wextra -std=gnu99")
@@ -68,6 +68,6 @@ include(GNUInstallDirs)
 install(TARGETS ${PROJ} DESTINATION "bin")
 
 # EXAMPLES
-if(EXAMPLES)
-    add_subdirectory(examples)
-endif()
+#if(EXAMPLES)
+#    add_subdirectory(examples)
+#endif()

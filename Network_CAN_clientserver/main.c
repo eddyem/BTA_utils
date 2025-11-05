@@ -23,22 +23,13 @@
 #include "clientserver.h"
 #include "globopts.h"
 
-static sl_sock_t *srv = NULL, *clt = NULL;
-
 void signals(int sig){
     if(sig){
         signal(sig, SIG_IGN);
         DBG("Get signal %d, quit.\n", sig);
         LOGERR("Exit with status %d", sig);
     }else LOGERR("Exit");
-    if(srv){
-        DBG("Del server");
-        sl_sock_delete(&srv);
-    }
-    if(clt){
-        DBG("Del client");
-        sl_sock_delete(&clt);
-    }
+    killsockets();
     exit(sig);
 }
 
@@ -49,12 +40,12 @@ int main(int argc, char **argv){
     if(!UserOpts.srvnode) ERRX("Point server node");
     if(!UserOpts.cltnode) ERRX("Point serial client node");
     sl_socktype_e type = (UserOpts.srvunix) ? SOCKT_UNIX : SOCKT_NET;
-    sl_sock_changemaxclients(UserOpts.maxclients);
-    srv = RunSrv(type, UserOpts.srvnode);
+    sl_sock_t *srv = RunSrv(type, UserOpts.srvnode);
     if(!srv) ERRX("Server: can't create socket and/or run threads");
+    sl_sock_changemaxclients(srv, UserOpts.maxclients);
     DBG("Server done");
     type = (UserOpts.cltunix) ? SOCKT_UNIX : SOCKT_NET;
-    clt = RunClt(type, UserOpts.cltnode);
+    sl_sock_t *clt = RunClt(type, UserOpts.cltnode);
     if(!clt) ERRX("Serial client: can't connect to socket and/or run threads");
     DBG("Client done");
     sl_loglevel_e lvl = UserOpts.verbose + LOGLEVEL_ERR;
@@ -75,7 +66,6 @@ int main(int argc, char **argv){
     }
     LOGMSG("End");
     DBG("Close");
-    if(srv) sl_sock_delete(&srv);
-    if(clt) sl_sock_delete(&clt);
+    killsockets();
     return 0;
 }
