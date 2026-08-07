@@ -29,12 +29,15 @@
 
 static pid_t childpid = -1;
 static double tstart = 0.; // time of fork()
+int isrunning = FALSE;
 
 void signals(int sig){
     int savelogs = (sl_dtime() - tstart > 30.) ? TRUE : FALSE;
-    if(childpid == 0){
+    if(childpid == 0){ // slave process
         if(savelogs) LOGWARN("Child killed with sig=%d", sig);
-        exit(sig); // slave process
+        isrunning = FALSE;
+        sleep(1); // allow graceful stop
+        exit(sig);
     }
     // master process
     if(sig){
@@ -106,7 +109,7 @@ int start_daemon(){
                 LOGMSG("Child %d works for %.1f %s", childpid, Tw, Tstr[idx]);
                 savelogs = TRUE;
             }
-            sleep(2); // wait a little before respawn
+            sleep(5); // wait a little before respawn
             tstart = sl_dtime();
         }else{ // slave
             prctl(PR_SET_PDEATHSIG, SIGTERM); // send SIGTERM to child when parent dies
@@ -114,6 +117,7 @@ int start_daemon(){
         }
     }
 #endif
+    isrunning = TRUE;
     // parent should never reach this part of code
     return open_socket();
 }

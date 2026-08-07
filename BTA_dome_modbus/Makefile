@@ -8,7 +8,7 @@ SOBJDIR := mkserver
 COBJDIR := mkclient
 CFLAGS += -O2 -Wall -Wextra -Wno-trampolines -pthread
 COMMSRCS := sslsock.c daemon.c cmdlnopts.c main.c
-SSRC := server.c $(COMMSRCS)
+SSRC := server.c motors.c $(COMMSRCS)
 CSRC := client.c bta_shdata.c $(COMMSRCS)
 SOBJS := $(addprefix $(SOBJDIR)/, $(SSRC:%.c=%.o))
 COBJS := $(addprefix $(COBJDIR)/, $(CSRC:%.c=%.o))

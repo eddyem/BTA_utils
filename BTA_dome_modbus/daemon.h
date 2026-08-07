@@ -18,5 +18,7 @@
 
 #pragma once
 
+extern int isrunning;
+
 int start_daemon();
 

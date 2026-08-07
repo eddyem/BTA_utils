@@ -19,20 +19,87 @@
 #include <usefull_macros.h>
 
 #include "cmdlnopts.h"
+#include "daemon.h" // isrunning
+#include "handlers_list.h"
+#include "motors.h"
 #include "server.h"
+
+// handlers: `index` - command index in list, `value` - setter's value or getter's answer
+typedef sl_sock_hresult_e (*handler_t)(int index, char value[SL_VAL_LEN]);
+
+// struct for setters/getters
+typedef struct{
+    const char *command;
+    handler_t handler;
+    const char *helpstring;
+} command_t;
 
 static const char *maxcl = "Max client number reached, connect later\n";
 static const char *sslerr = "SSL error occured\n";
 
+// declaration of handlers
+#define NEW_HANDLER(name, unused)  \
+static sl_sock_hresult_e name ## _handler(int, char[SL_VAL_LEN]); // static const char* cmd_ ## name = STR(name);
+HANDLERS_LIST()
+#undef NEW_HANDLER
+
+// commands list
+#define NEW_HANDLER(name, help)  \
+    { STR(name), name ## _handler, help },
+command_t command_list[] = {
+    HANDLERS_LIST()
+};
+#undef NEW_HANDLER
+// index of command like `current_idx`
+#define NEW_HANDLER(name, help)  \
+    name ## _idx,
+enum{
+    HANDLERS_LIST()
+};
+#undef NEW_HANDLER
+
+#define HANDLERS_AMOUNT (sizeof(command_list) / sizeof(command_t))
+#define ISSETTER(x) (0 != x[0])
+
+// search handler by name
+static int search_handler(const char *);
+
 // return 0 if client disconnected
 static int handle_connection(SSL *ssl){
-    char buf[1024];
-    int r = read_string(ssl, buf, 1024);
+    char buf[IOBUF_LEN], key[SL_KEY_LEN], val[SL_VAL_LEN];
+    int r = read_string(ssl, buf, IOBUF_LEN);
     if(r < 0) return 0;
     int sd = SSL_get_fd(ssl);
-    printf("Client %d msg: \"%s\"\n", sd, buf);
+    DBG("Client %d msg: \"%s\"\n", sd, buf);
     LOGDBG("fd=%d, message=%s", sd, buf);
-    snprintf(buf, 1024, "Hello, your FD=%d\n", sd);
+    int got = sl_get_keyval(buf, key, val);
+    if(got == 0){
+        DBG("Comment or empty string");
+        return 1; // empty string
+    }
+    int h_idx = search_handler(key);
+    sl_sock_hresult_e result = RESULT_BADKEY;
+    if(-1 != h_idx){
+        if(got == 1){
+            DBG("getter #%d", h_idx);
+            val[0] = 0; // getter
+        }else DBG("setter #%d", h_idx);
+        result = command_list[h_idx].handler(h_idx, val);
+        DBG("result: %d", result);
+    }else{
+        DBG("Command not found or help?");
+        // check if user asks for help
+        if(0 == strcmp(key, "help")){
+            for(size_t i = 0; i < HANDLERS_AMOUNT; ++i){
+                snprintf(buf,  IOBUF_LEN-1, "%s: %s\n", command_list[i].command, command_list[i].helpstring);
+                SSL_write(ssl, buf, strlen(buf));
+            }
+            return 1;
+        }
+    }
+    // now `val` is an answer or error code
+    if(result != RESULT_SILENCE) snprintf(buf, IOBUF_LEN-1, "%s\n", sl_sock_hresult2str(result));
+    else snprintf(buf, IOBUF_LEN-1, "%s=%s\n", key, val);
     SSL_write(ssl, buf, strlen(buf));
     return 1;
 }
@@ -60,8 +127,6 @@ static int timeouted_sslaccept(SSL *ssl){
 }
 
 void serverproc(SSL_CTX *ctx, int fd){
-    char buf[64];
-    int P = 0;
     int enable = 1;
     if(ioctl(fd, FIONBIO, (void *)&enable) < 0){
         LOGERR("Can't make socket nonblocking");
@@ -73,9 +138,11 @@ void serverproc(SSL_CTX *ctx, int fd){
     poll_set[0].fd = fd;
     poll_set[0].events = POLLIN;
     SSL *ssls[BACKLOG+1] = {0}; // !!! start from 1 - like in poll_set !!!
-    double t0 = sl_dtime(), tstart = t0;
-    while(1){
-        double tnow = sl_dtime();
+    //double t0 = sl_dtime(), tstart = t0;
+    //char buf[64];
+    //int P = 0;
+    while(isrunning){
+        /*double tnow = sl_dtime();
         if(tnow - t0 > 5. && nfd > 1){ // broadcasting message
             //DBG("send ping");
             snprintf(buf, 63, "ping #%d; t=%g\n", ++P, tnow - tstart);
@@ -85,7 +152,7 @@ void serverproc(SSL_CTX *ctx, int fd){
                 SSL_write(ssls[i], buf, l);
             }
             t0 = tnow;
-        }
+        }*/
         poll(poll_set, nfd, 1); // max timeout - 1ms
         // check for accept()
         if(poll_set[0].revents & POLLIN){
@@ -98,6 +165,8 @@ void serverproc(SSL_CTX *ctx, int fd){
                 LOGWARN("Max amount of connections: disconnect fd=%d", client);
                 WARNX("Limit of connections reached");
                 send(client, maxcl, sizeof(maxcl)-1, MSG_NOSIGNAL);
+                shutdown(client, SHUT_WR);
+                usleep(50000); // we can't allow client to block us
                 close(client);
             }else{
                 DBG("New ssl");
@@ -136,4 +205,92 @@ void serverproc(SSL_CTX *ctx, int fd){
             }
         }
     }
+    for(int i = 0; i < nfd; ++i) SSL_free(ssls[i]);
+    motors_stop();
+    modbus_close();
+}
+
+/****************** Protocol handlers (return 0 in case of success or error code >0 if failed) ******************/
+// key - keyword (command name), value - i/o buffer (value[0]==0 for getters)
+/*
+sl_sock_hresult_e current_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    double D;
+    if(ISSETTER(value)){
+        if(!sl_str2d(&D, value) || !motors_set_curntsetpoint(D)) return RESULT_BADVAL;
+        return RESULT_OK;
+    }
+    snprintf(value,  SL_VAL_LEN-1, "%.3f", motors_get_curntsetpoint());
+    return RESULT_SILENCE;
+}*/
+
+sl_sock_hresult_e motcurrent_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    if(ISSETTER(value)) return RESULT_BADVAL; // only getter
+    double D;
+    if(!motors_get_actcurrent(&D)) return RESULT_FAIL;
+    snprintf(value,  SL_VAL_LEN-1, "%.3f", D);
+    return RESULT_SILENCE;
+}
+
+sl_sock_hresult_e motnum_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    int I;
+    if(ISSETTER(value)){
+        if(!sl_str2i(&I, value) || !motors_set_activenum(I)) return RESULT_BADVAL;
+        return RESULT_OK;
+    }
+    snprintf(value, SL_VAL_LEN-1, "%d", motors_get_activenum());
+    return RESULT_SILENCE;
+}
+
+sl_sock_hresult_e motspeed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    if(ISSETTER(value)) return RESULT_BADVAL; // only getter
+    double D;
+    if(!motors_get_actspeed(&D)) return RESULT_FAIL;
+    snprintf(value,  SL_VAL_LEN-1, "%.3f", D);
+    return RESULT_SILENCE;
+}
+
+sl_sock_hresult_e motstatus_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    if(ISSETTER(value)) return RESULT_BADVAL; // only getter
+    int I;
+    if(!motors_get_actstatus(&I)) return RESULT_FAIL;
+    snprintf(value, SL_VAL_LEN-1, "%d", I);
+    return RESULT_SILENCE;
+}
+/*
+sl_sock_hresult_e relay_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    return RESULT_SILENCE;
+}*/
+
+sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    double D;
+    if(ISSETTER(value)){
+        if(!sl_str2d(&D, value) || !motors_set_speedsetpoint(D)) return RESULT_BADVAL;
+        return RESULT_OK;
+    }
+    snprintf(value,  SL_VAL_LEN-1, "%.3f", motors_get_speedsetpoint());
+    return RESULT_SILENCE;
+}
+
+// binary search handler by name
+static int search_handler(const char *name){
+    int low = 0;
+    int high = HANDLERS_AMOUNT - 1;
+    int iter = 0;
+
+    while(low <= high){
+        ++iter;
+        int mid = low + (high - low) / 2;
+        // Compare the target string with the struct's string field
+        int res = strcmp(name, command_list[mid].command);
+        if(res == 0){
+            DBG("Found %s by %d iterations\n", name, iter);
+            return mid; // Target found, return index
+        }else if(res < 0){
+            high = mid - 1; // Target is smaller, search left half
+        }else{
+            low = mid + 1;  // Target is larger, search right half
+        }
+    }
+    DBG("%s not found by %d iterations\n", name, iter);
+    return -1;
 }

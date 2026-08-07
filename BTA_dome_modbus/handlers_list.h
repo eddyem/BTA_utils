@@ -1,6 +1,6 @@
 /*
  * This file is part of the sslsosk project.
- * Copyright 2023 Edward V. Emelianov <edward.emelianoff@gmail.com>.
+ * Copyright 2026 Edward V. Emelianov <edward.emelianoff@gmail.com>.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,27 +18,18 @@
 
 #pragma once
 
-#include <arpa/inet.h>  // inet_ntop
-#include <fcntl.h>
-#include <netdb.h>      // addrinfo
-#include <netinet/in.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-#include <poll.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-
-#if ! defined CLIENT && ! defined SERVER
-#error "Define CLIENT or SERVER before including this file"
-#endif
-#if defined CLIENT && defined SERVER
-#error "Both CLIENT and SERVER defined"
+#ifndef STR
+#define SSS_(x)   #x
+#define STR(x)  SSS_(x)
 #endif
 
-#define BACKLOG     10
+// Handlers in this list MUST be in sortered order (by name)!!!
+#define HANDLERS_LIST() \
+NEW_HANDLER(motcurrent, "motor current") \
+NEW_HANDLER(motnum, "active motor number for status requests") \
+NEW_HANDLER(motspeed, "motor speed") \
+NEW_HANDLER(motstatus, "motor status") \
+NEW_HANDLER(speed, "speed setter") \
 
-// length of string buffer for in/out argument `value` (for handlers)
-#define IOBUF_LEN   256
-
-int open_socket();
-int read_string(SSL *ssl, char *buf, int l);
+/*NEW_HANDLER(current, "current setter") \*/
+/*NEW_HANDLER(relay, "relay command") \*/

@@ -168,15 +168,20 @@ static int geterrcode(SSL *ssl, int errcode){
 int read_string(SSL *ssl, char *buf, int l){
     if(!ssl || l < 1) return 0;
     int bytes = SSL_peek(ssl, buf, l);
-    DBG("Peek: %d", bytes);
+    //DBG("Peek: %d", bytes);
     if(bytes < 1){ // nothing to read or error
         return geterrcode(ssl, bytes);
     }
-    if(bytes < l && buf[bytes-1] != '\n'){ // string not ready, no buffer overfull
-        return 0; // wait a rest of string
+    char *eol = strchr(buf, '\n');
+    if(!eol){ // not found: overflow or no enough symbols
+        if(bytes == l){ // oops: overflow, thow it out
+            SSL_read(ssl, buf, l);
+        }
+        return 0;
     }
+    l = eol - buf + 1;
     bytes = SSL_read(ssl, buf, l);
-    DBG("Read: %d", bytes);
+    //DBG("Read: %d", bytes);
     if(bytes < 1){ // error
         return geterrcode(ssl, bytes);
     }

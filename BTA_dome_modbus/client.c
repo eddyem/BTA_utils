@@ -16,10 +16,51 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <inttypes.h>
+#include <float.h>
+#include <signal.h>
 #include <usefull_macros.h>
 
 #include "bta_shdata.h"
 #include "client.h"
+#include "cmdlnopts.h"
+#include "daemon.h" // isrunning
+#include "handlers_list.h"
+#include "motors.h" // motors amount, motor_state_t
+#include "sslsock.h"
+
+
+#define NEW_HANDLER(name, unused)  \
+static const char* cmd_ ## name = STR(name);
+HANDLERS_LIST()
+#undef NEW_HANDLER
+
+static const char *Ecodes[RESULT_SILENCE] = {
+    [RESULT_OK] = "OK",
+    [RESULT_BADVAL] = "BADVAL",
+    [RESULT_BADKEY] = "BADKEY",
+    [RESULT_FAIL] = "FAIL",
+};
+
+typedef enum{
+    ARG_TYPE_INT,
+    ARG_TYPE_DOUBLE
+} arg_type_t;
+
+typedef struct{
+    union{
+        double d;
+        int64_t i;
+    };
+    arg_type_t type;
+} value_t;
+
+// setter: when setspeed command sent successfully
+static double set_speed = 0.;
+// common state - by last motor polled
+static motor_state_t CommonState = {0};
+// state of each motor
+static motor_state_t MotorState[MOTORS_AMOUNT] = {0};
 
 static int SSL_nbread(SSL *ssl, char *buf, int bufsz){
     struct pollfd fds = {0};
@@ -32,14 +73,252 @@ static int SSL_nbread(SSL *ssl, char *buf, int bufsz){
         return 0;
     }
     if(fds.revents == POLLIN){
-//        DBG("Got info in fd #%d", fd);
+        //        DBG("Got info in fd #%d", fd);
         int l = read_string(ssl, buf, bufsz);
-//        DBG("read %d bytes", l);
+        //        DBG("read %d bytes", l);
         return l;
     }
     return 0;
 }
 
+
+/**
+ * @brief send_motor_command - send motor command and parse answer
+ * @param ssl - ssl
+ * @param cmd - command to send
+ * @param setter - command setter (or NULL for getter)
+ * @param getter - pointer do value changed by getter (or NULL for setter)
+ * @return server's answer (or OK for successfull getters)
+ */
+static sl_sock_hresult_e send_motor_command(SSL *ssl, const char *cmd, value_t *setter, value_t *getter){
+    char buf[IOBUF_LEN];
+    if(!ssl || !cmd) return RESULT_FAIL;
+    int l;
+    if(setter){
+        if(setter->type == ARG_TYPE_INT){
+            l = snprintf(buf, IOBUF_LEN-1, "%s=%" PRId64 "\n", cmd, setter->i);
+        }else{
+            l = snprintf(buf, IOBUF_LEN-1, "%s=%g\n", cmd, setter->d);
+        }
+    }else l = snprintf(buf, IOBUF_LEN-1, "%s\n", cmd);
+    buf[l] = 0;
+    DBG("Send to server: %s", buf);
+    SSL_write(ssl, buf, l);
+    double t0 = sl_dtime();
+    while(sl_dtime() - t0 < G.acc_timeout){
+        l = SSL_nbread(ssl, buf, IOBUF_LEN-1);
+        if(l == 0) continue;
+        else if(l < 0){
+            LOGWARN("Server disconnected or other error");
+            ERRX("Disconnected");
+        }
+        buf[l] = 0;
+        DBG("Received: \"%s\"\n", buf);
+        // parser
+        char key[SL_KEY_LEN] = {0}, val[SL_VAL_LEN] = {0};
+        int got = sl_get_keyval(buf, key, val);
+        DBG("got=%d, key=%s, val=%s", got, key, val);
+        if(got == 0){
+            DBG("Empty answer");
+            continue;
+        }
+        if((!setter && got == 1) || (setter && got == 2)){ // wrong answer
+            DBG("wrong answer");
+            continue;
+        }
+        if(setter){ // check errcode in answer
+            if(got == 2){
+                DBG("Getter answer");
+                continue;
+            }
+            for(int i = 0; i < RESULT_SILENCE; ++i){
+                DBG("compare '%s' and '%s'", key, Ecodes[i]);
+                if(0 == strcmp(key, Ecodes[i])){
+                    DBG("Found errcode for '%s': %d", key, i);
+                    return i; // found
+                }
+            }
+        }else{ // check "cmd = val"
+            if(got == 1) continue;
+            if(strcmp(cmd, key)) continue;
+            if(getter){
+                if(getter->type == ARG_TYPE_INT){
+                    long long ll;
+                    if(!sl_str2ll(&ll, val)) continue;
+                    getter->i = (int64_t) ll;
+                }else{
+                    double d;
+                    if(!sl_str2d(&d, val)) continue;
+                    getter->d = d;
+                }
+            }
+            return RESULT_OK;
+        }
+    }
+    return RESULT_FAIL;
+}
+
+// emergency stop motors
+static void stop_all(SSL *ssl){
+    int ntries = 0;
+    value_t speed = {.type = ARG_TYPE_DOUBLE, .d = 0.};
+    while(ntries < 5){
+        if(RESULT_OK == send_motor_command(ssl, cmd_speed, &speed, NULL)) break;
+        ++ntries;
+        usleep(100000);
+    }
+}
+
+/**
+ * @brief check_motor - get status etc of motor number `motno`
+ * @param ssl - ssl
+ * @param motno - motor number (iterates on success)
+ * @return FALSE if some step failed
+ */
+static int check_motor(SSL *ssl, int motno){
+    char msg[128];
+    if(!ssl || motno < 0 || motno >= MOTORS_AMOUNT) return FALSE;
+    value_t Ival = {.type = ARG_TYPE_INT, .i = motno};
+    value_t Dval = {.type = ARG_TYPE_DOUBLE};
+    if(RESULT_OK != send_motor_command(ssl, cmd_motnum, &Ival, NULL)) return FALSE;
+    if(RESULT_OK != send_motor_command(ssl, cmd_motstatus, NULL, &Ival)) return FALSE;
+    MotorState[motno].status = (int) Ival.i;
+    if(RESULT_OK != send_motor_command(ssl, cmd_motspeed, NULL, &Dval)) return FALSE;
+    MotorState[motno].speed = Dval.d;
+    if(RESULT_OK != send_motor_command(ssl, cmd_motcurrent, NULL, &Dval)) return FALSE;
+    MotorState[motno].current = Dval.d;
+    // now set common state as mean of all
+    if(motno != MOTORS_AMOUNT - 1) return TRUE;
+    int status = 0, N = 0; // mean status is largest
+    double speed = 0., current = 0.;
+    for(int i = 0; i < MOTORS_AMOUNT; ++i){
+        int s = MotorState[i].status;
+        if(s == MOT_OFF) continue;
+        if(status < s) status = s;
+        speed += MotorState[i].speed;
+        current += MotorState[i].current;
+        ++N;
+    }
+    if(N){
+        speed /= (double)N;
+        current /= (double)N;
+    }
+    if(status == MOT_OFF && CommonState.status != MOT_OFF){
+        *msg = MesgFault;
+        sprintf(msg+1, "Dome: All motors are Off!\n");
+        SendMessage(msg);
+    }else if(status != MOT_OFF && CommonState.status == MOT_OFF){
+        *msg = MesgFault;
+        sprintf(msg+1, "Dome: Start motors!\n");
+        SendMessage(msg);
+    }
+    CommonState.status = status;
+    CommonState.speed = speed;
+    CommonState.current = current;
+    return TRUE;
+}
+
+// check for speed change and send given command to server
+static void chk_dome_speed(SSL *ssl){
+    static int old_state = D_Off;
+    int new_state = Dome_Speed;
+    double tlast = 0.;
+    if(new_state == old_state){
+        if(sl_dtime() - tlast < G.speedchk_interval) return;
+        if(CommonState.speed == set_speed){
+            tlast = sl_dtime();
+            return;
+        }
+    }
+    double new_speed = 0.;
+    switch(new_state){
+    case D_Lplus:
+        new_speed = LSpeed;
+        break;
+    case D_Lminus:
+        new_speed = -LSpeed;
+        break;
+    case D_Mplus:
+        new_speed = MSpeed;
+        break;
+    case D_Mminus:
+        new_speed = -MSpeed;
+        break;
+    case D_Hplus:
+        new_speed = HSpeed;
+        break;
+    case D_Hminus:
+        new_speed = -HSpeed;
+        break;
+    default: // stop
+        break;
+    }
+    value_t Dval = {.type = ARG_TYPE_DOUBLE, .d = new_speed};
+    if(RESULT_OK == send_motor_command(ssl, cmd_speed, &Dval, NULL)){
+        if(RESULT_OK == send_motor_command(ssl, cmd_speed, NULL, &Dval) && fabs(Dval.d - new_speed) <= FLT_EPSILON){
+            old_state = new_state; // all OK, command in work
+            set_speed = new_speed;
+            tlast = sl_dtime();
+        }
+    }
+}
+
+// SHM parser; return FALSE if SHM is in erroreous state
+static int process_system(SSL *ssl){
+    static double t0 = 0., last_mtime = 0.;
+    static int curMotNo = 0; // current motor number (we'll scan all 10 motors by one)
+    double curtime = sl_dtime();
+    if(t0 < 1.){ // first run
+        t0 = curtime;
+        last_mtime = M_time;
+        return TRUE;
+    }
+    // check time sync
+    static int brokenshm = FALSE;
+    if(M_time - last_mtime + G.T_sync_lost > curtime - t0 || !check_shm_block(&sdat)){ // broken SHM
+        if(!brokenshm){
+            LOGERR("Stalled or broken SHM block");
+            brokenshm = TRUE;
+        }
+        return FALSE;
+    }else brokenshm = FALSE;
+    static int modelused = FALSE;
+    if(UseModel == FullModel){ // model
+        if(!modelused){
+            LOGWARN("Server is in model mode");
+            modelused = TRUE;
+            stop_all(ssl);
+        }
+        return TRUE;
+    }else modelused = FALSE;
+    static int serverisdead = FALSE;
+    if(ServPID <= 0 || kill(ServPID, 0) < 0){ // dead server
+        if(!serverisdead){
+            LOGERR("Main server is dead");
+            serverisdead = TRUE;
+        }
+        return FALSE;
+    }else serverisdead = FALSE;
+    if(check_motor(ssl, curMotNo)){
+        // TODO: check state for errors
+        if(++curMotNo >= MOTORS_AMOUNT) curMotNo = 0;
+    }
+    if(!D_Locked && Dome_State != D_Off) chk_dome_speed(ssl);
+#if 0
+    if(curtime - t0 > 3.){
+        sprintf(buf, "help\n");
+        SSL_write(ssl, buf, strlen(buf));
+        /*DBG("OLD: %g", val_Hmd);
+            val_Hmd = 55. + drand48() * 15.;
+            DBG("New: %g", val_Hmd);*/
+        t0 = curtime;
+    }
+#endif
+    ;
+    return FALSE;
+}
+
+/*
 static char *time_asc(double t){
     static char buf[128];
     int h, m;
@@ -52,14 +331,15 @@ static char *time_asc(double t){
     snprintf(buf, 127, "%d:%02d:%04.1f", h,m,s);
     return buf;
 }
-
+*/
 
 void clientproc(SSL_CTX *ctx, int fd){
     FNAME();
     SSL *ssl;
     char buf[1024];
-    char acClientRequest[1024] = {0};
     int bytes;
+    sdat.mode |= 0200; // allow W
+    sdat.atflag = 0; // clear SHM_RDONLY
     if(!get_shm_block(&sdat, ClientSide)){
         LOGERR("Can't get SHM block");
         ERRX("Can't get SHM block");
@@ -76,17 +356,11 @@ void clientproc(SSL_CTX *ctx, int fd){
         LOGERR("Can't make socket nonblocking");
         ERRX("ioctl()");
     }
-    double t0 = sl_dtime();
-    while(1){
-        if(sl_dtime() - t0 > 3.){
-            if(!check_shm_block(&sdat)){
-                LOGERR("Broken SHM block");
-                ERRX("Broken SHM block");
-            }
-            sprintf(acClientRequest, "UTC: %s\n", time_asc(M_time));
-            SSL_write(ssl, acClientRequest, strlen(acClientRequest));
-            //val_Hmd = 55. + drand48() * 15.;
-            t0 = sl_dtime();
+    while(isrunning){
+        if(!process_system(ssl)){
+            stop_all(ssl);
+            sleep(5);
+            break;
         }
         bytes = SSL_nbread(ssl, buf, sizeof(buf));
         if(bytes > 0){

@@ -46,6 +46,8 @@ glob_pars G = {
     .key = DEFKEY,
     .ca = DEFCA,
     .acc_timeout = 1.,
+    .T_sync_lost = 5.,
+    .speedchk_interval = 10.,
 };
 
 /*
@@ -62,11 +64,13 @@ static sl_option_t cmdlnopts[] = {
     {"port",    NEED_ARG,   NULL,   'p',    arg_string, APTR(&G.port),      _("port to open (default: " DEFAULT_PORT ")")},
     {"verbose", NO_ARGS,    NULL,   'v',    arg_none,   APTR(&G.verbose),   _("increase log verbose level (default: LOG_WARN)")},
     {"ca",      NEED_ARG,   NULL,   'a',    arg_string, APTR(&G.ca),        _("path to SSL ca - base cert (default:" DEFCA ")")},
+    {"timeout", NEED_ARG,   NULL,   't',    arg_double, APTR(&G.acc_timeout),_("network timeout, s (default: 1)")},
 #ifdef SERVER
-    {"timeout", NEED_ARG,   NULL,   't',    arg_double, APTR(&G.acc_timeout),_("server's accept timeout, s")},
 #endif
 #ifdef CLIENT
-    {"server",  NEED_ARG,   NULL,   's',    arg_string, APTR(&G.serverhost),  _("server IP address or name")},
+    {"mottmout",NEED_ARG,   NULL,   'M',    arg_double, APTR(&G.speedchk_interval), _("interval of motor's speed checking, s (default: 10)")},
+    {"server",  NEED_ARG,   NULL,   's',    arg_string, APTR(&G.serverhost), _("server node, IP:port")},
+    {"lostsync",NEED_ARG,   NULL,   'L',    arg_double, APTR(&G.T_sync_lost),_("\"lost synchronization\" timeout, s (default: 5)")},
 #endif
    end_option
 };

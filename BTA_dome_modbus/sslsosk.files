@@ -6,7 +6,10 @@ cmdlnopts.c
 cmdlnopts.h
 daemon.c
 daemon.h
+handlers_list.h
 main.c
+motors.c
+motors.h
 server.c
 server.h
 sslsock.c
