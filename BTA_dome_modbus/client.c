@@ -274,48 +274,43 @@ static int process_system(SSL *ssl){
         return TRUE;
     }
     // check time sync
-    static int brokenshm = FALSE;
-    if(M_time - last_mtime + G.T_sync_lost > curtime - t0 || !check_shm_block(&sdat)){ // broken SHM
-        if(!brokenshm){
+    static int brokenshmctr = 0;
+    if(M_time - last_mtime > curtime - t0 + G.T_sync_lost || !check_shm_block(&sdat)){ // broken SHM
+        if(brokenshmctr == 0){
             LOGERR("Stalled or broken SHM block");
-            brokenshm = TRUE;
         }
+        WARNX("Stalled or broken SHM block; %g -- %g", M_time - last_mtime + G.T_sync_lost, curtime - t0);
+        if(++brokenshmctr < 10) return TRUE;
         return FALSE;
-    }else brokenshm = FALSE;
+    }else brokenshmctr = 0;
     static int modelused = FALSE;
-    if(UseModel == FullModel){ // model
-        if(!modelused){
-            LOGWARN("Server is in model mode");
-            modelused = TRUE;
-            stop_all(ssl);
-        }
-        return TRUE;
-    }else modelused = FALSE;
-    static int serverisdead = FALSE;
-    if(ServPID <= 0 || kill(ServPID, 0) < 0){ // dead server
-        if(!serverisdead){
-            LOGERR("Main server is dead");
-            serverisdead = TRUE;
-        }
-        return FALSE;
-    }else serverisdead = FALSE;
+    if(!G.emulmode){
+        if(UseModel == FullModel){ // model
+            if(!modelused){
+                LOGWARN("Server is in model mode");
+                modelused = TRUE;
+                stop_all(ssl);
+            }
+            return TRUE;
+        }else modelused = FALSE;
+        static int serverisdead = FALSE;
+        if(ServPID <= 0 || kill(ServPID, 0) < 0){ // dead server
+            WARNX("Main server is dead");
+            if(!serverisdead){
+                LOGERR("Main server is dead");
+                serverisdead = TRUE;
+                return TRUE;
+            }
+            return FALSE;
+        }else serverisdead = FALSE;
+    }
     if(check_motor(ssl, curMotNo)){
         // TODO: check state for errors
         if(++curMotNo >= MOTORS_AMOUNT) curMotNo = 0;
     }
     if(!D_Locked && Dome_State != D_Off) chk_dome_speed(ssl);
-#if 0
-    if(curtime - t0 > 3.){
-        sprintf(buf, "help\n");
-        SSL_write(ssl, buf, strlen(buf));
-        /*DBG("OLD: %g", val_Hmd);
-            val_Hmd = 55. + drand48() * 15.;
-            DBG("New: %g", val_Hmd);*/
-        t0 = curtime;
-    }
-#endif
     ;
-    return FALSE;
+    return TRUE;
 }
 
 /*
@@ -358,18 +353,23 @@ void clientproc(SSL_CTX *ctx, int fd){
     }
     while(isrunning){
         if(!process_system(ssl)){
+            LOGERR("Motors error");
+            WARNX("ERROR!");
             stop_all(ssl);
             sleep(5);
             break;
         }
+        // clear receiving buffer (TODO: parse it?)
         bytes = SSL_nbread(ssl, buf, sizeof(buf));
         if(bytes > 0){
             buf[bytes] = 0;
-            printf("Received: \"%s\"\n", buf);
+            fprintf(stderr, "Received: \"%s\"\n", buf);
         }else if(bytes < 0){
             LOGWARN("Server disconnected or other error");
             ERRX("Disconnected");
         }
+        usleep(100000);
     }
+    DBG("Exit; isrunning=%d", isrunning);
     SSL_free(ssl);
 }

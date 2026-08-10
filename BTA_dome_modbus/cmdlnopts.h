@@ -34,6 +34,7 @@
  * here are some typedef's for global data
  */
 typedef struct{
+    int emulmode;           // emulation mode: don't check server & run in model mode
     double acc_timeout;     // network timeout, s
     double T_sync_lost;     // "lost synchronization" timeout, s
     double speedchk_interval;// interval of motors' speed checking (resend command if don't reach yet)

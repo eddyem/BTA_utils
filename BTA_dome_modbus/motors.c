@@ -36,7 +36,7 @@ current=xx - (sg) уставка тока
 
 // set points
 static double currentSet = 0., speedSet = 0.;
-// current motor for status etc. getters
+// current motor for status etc. getters (0..MOTORS_AMOUNT-1)
 static int motindex = 0;
 
 // stop all
@@ -76,7 +76,8 @@ int motors_set_speedsetpoint(double val){
 int motors_get_activenum(){ return motindex; }
 // set number of active motor
 int motors_set_activenum(int N){
-    if(N < 1 || N > MOTORS_AMOUNT) return FALSE;
+    DBG("Set active motor=%d", N);
+    if(N < 0 || N >= MOTORS_AMOUNT) return FALSE;
     motindex = N;
     return TRUE;
 }

@@ -1,0 +1,2 @@
+#!/bin/bash
+su -c "make debug; chmod a+s dome_client"

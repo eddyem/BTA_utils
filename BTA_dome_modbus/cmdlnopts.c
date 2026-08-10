@@ -71,6 +71,7 @@ static sl_option_t cmdlnopts[] = {
     {"mottmout",NEED_ARG,   NULL,   'M',    arg_double, APTR(&G.speedchk_interval), _("interval of motor's speed checking, s (default: 10)")},
     {"server",  NEED_ARG,   NULL,   's',    arg_string, APTR(&G.serverhost), _("server node, IP:port")},
     {"lostsync",NEED_ARG,   NULL,   'L',    arg_double, APTR(&G.T_sync_lost),_("\"lost synchronization\" timeout, s (default: 5)")},
+    {"emulation",NO_ARGS,   NULL,   'e',    arg_int,    APTR(&G.emulmode),  _("run even in emulation mode")},
 #endif
    end_option
 };
