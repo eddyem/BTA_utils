@@ -139,7 +139,8 @@ int open_socket(){
 #ifdef SERVER
     serverproc(ctx, fd);
 #else
-    clientproc(ctx, fd);
+    if(G.terminal) terminal(ctx, fd);
+    else clientproc(ctx, fd);
 #endif
     // newer reached
     close(fd);

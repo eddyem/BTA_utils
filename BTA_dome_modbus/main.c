@@ -24,6 +24,5 @@
 int main(int argc, char **argv){
     sl_init();
     parse_args(argc, argv);
-    DBG("START");
     return start_daemon();
 }

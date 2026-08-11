@@ -21,3 +21,4 @@
 #include "sslsock.h"
 
 void clientproc(SSL_CTX *ctx, int fd);
+void terminal(SSL_CTX *ctx, int fd);

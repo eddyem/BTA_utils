@@ -72,6 +72,10 @@ int start_daemon(){
 #ifdef CLIENT
     //DBG("server: %s", G.serverhost);
     if(!G.serverhost) ERRX("Point server name");
+    if(G.terminal){
+        isrunning = TRUE;
+        return open_socket();
+    }
 #endif
     if(G.logfile){
         int lvl = LOGLEVEL_WARN + G.verbose;

@@ -328,18 +328,9 @@ static char *time_asc(double t){
 }
 */
 
-void clientproc(SSL_CTX *ctx, int fd){
-    FNAME();
-    SSL *ssl;
-    char buf[1024];
-    int bytes;
-    sdat.mode |= 0200; // allow W
-    sdat.atflag = 0; // clear SHM_RDONLY
-    if(!get_shm_block(&sdat, ClientSide)){
-        LOGERR("Can't get SHM block");
-        ERRX("Can't get SHM block");
-    }
-    ssl = SSL_new(ctx);
+// open SSL connection for client
+static SSL *openConn(SSL_CTX *ctx, int fd){
+    SSL *ssl = SSL_new(ctx);
     SSL_set_fd(ssl, fd);
     int c = SSL_connect(ssl);
     if(c < 0){
@@ -351,6 +342,21 @@ void clientproc(SSL_CTX *ctx, int fd){
         LOGERR("Can't make socket nonblocking");
         ERRX("ioctl()");
     }
+    return ssl;
+}
+
+// run main client process
+void clientproc(SSL_CTX *ctx, int fd){
+    FNAME();
+    char buf[1024];
+    SSL *ssl = openConn(ctx, fd);
+    if(!ssl) return;
+    sdat.mode |= 0200; // allow W
+    sdat.atflag = 0; // clear SHM_RDONLY
+    if(!get_shm_block(&sdat, ClientSide)){
+        LOGERR("Can't get SHM block");
+        ERRX("Can't get SHM block");
+    }
     while(isrunning){
         if(!process_system(ssl)){
             LOGERR("Motors error");
@@ -360,7 +366,7 @@ void clientproc(SSL_CTX *ctx, int fd){
             break;
         }
         // clear receiving buffer (TODO: parse it?)
-        bytes = SSL_nbread(ssl, buf, sizeof(buf));
+        int bytes = SSL_nbread(ssl, buf, sizeof(buf)-1);
         if(bytes > 0){
             buf[bytes] = 0;
             fprintf(stderr, "Received: \"%s\"\n", buf);
@@ -371,5 +377,42 @@ void clientproc(SSL_CTX *ctx, int fd){
         usleep(100000);
     }
     DBG("Exit; isrunning=%d", isrunning);
+    SSL_free(ssl);
+}
+
+// run in terminal mode
+void terminal(SSL_CTX *ctx, int fd){
+    FNAME();
+    char buf[1024], *lptr = NULL;
+    size_t N = 0;
+    SSL *ssl = openConn(ctx, fd);
+    if(!ssl) return;
+    int printed = FALSE;
+    while(isrunning){
+        if(!printed){
+            printf("> ");
+            fflush(stdout);
+            printed = TRUE;
+        }
+        if(sl_canread(0)){
+            ssize_t L = getline(&lptr, &N, stdin);
+            if(L > (ssize_t)(sizeof(buf)-1)) WARNX("String too long!");
+            else if(L > 0){
+                SSL_write(ssl, lptr, L);
+            }
+        }
+        int bytes = 0;
+        while((bytes = SSL_nbread(ssl, buf, sizeof(buf)-1))){
+            if(bytes > 0){
+                buf[bytes] = 0;
+                printf("< %s\n", buf);
+            }else{
+                LOGWARN("Server disconnected or other error");
+                ERRX("Disconnected");
+            }
+            usleep(10000);
+            printed = FALSE;
+        }
+    }
     SSL_free(ssl);
 }

@@ -35,6 +35,7 @@
  */
 typedef struct{
     int emulmode;           // emulation mode: don't check server & run in model mode
+    int terminal;           // run client in terminal mode
     double acc_timeout;     // network timeout, s
     double T_sync_lost;     // "lost synchronization" timeout, s
     double speedchk_interval;// interval of motors' speed checking (resend command if don't reach yet)
