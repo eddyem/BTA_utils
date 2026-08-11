@@ -161,9 +161,10 @@ static sl_sock_hresult_e send_motor_command(SSL *ssl, const char *cmd, value_t *
 // emergency stop motors
 static void stop_all(SSL *ssl){
     int ntries = 0;
-    value_t speed = {.type = ARG_TYPE_DOUBLE, .d = 0.};
+    //value_t speed = {.type = ARG_TYPE_DOUBLE, .d = 0.};
     while(ntries < 5){
-        if(RESULT_OK == send_motor_command(ssl, cmd_speed, &speed, NULL)) break;
+        //if(RESULT_OK == send_motor_command(ssl, cmd_speed, &speed, NULL)) break;
+        if(RESULT_OK == send_motor_command(ssl, cmd_stop, NULL, NULL)) break;
         ++ntries;
         usleep(100000);
     }

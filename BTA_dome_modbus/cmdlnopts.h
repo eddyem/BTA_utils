@@ -35,10 +35,7 @@
  */
 typedef struct{
     int emulmode;           // emulation mode: don't check server & run in model mode
-    int terminal;           // run client in terminal mode
     double acc_timeout;     // network timeout, s
-    double T_sync_lost;     // "lost synchronization" timeout, s
-    double speedchk_interval;// interval of motors' speed checking (resend command if don't reach yet)
     char *pidfile;          // name of PID file
     char *logfile;          // logging to this file
     char *cert;             // sertificate
@@ -46,8 +43,15 @@ typedef struct{
     char *port;             // port number
     int verbose;            // logfile verbose level
     char *ca;               // ca
+#ifdef SERVER
+    int serialspeed;        // speed of serial device
+    char *serialpath;       // path to RS-485 device
+#endif
 #ifdef CLIENT
+    int terminal;           // run client in terminal mode
+    double speedchk_interval;// interval of motors' speed checking (resend command if don't reach yet)
     char *serverhost;       // server IP address
+    double T_sync_lost;     // "lost synchronization" timeout, s
 #endif
 } glob_pars;
 

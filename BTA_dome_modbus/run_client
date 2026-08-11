@@ -1,3 +1,3 @@
 #!/bin/bash
-rm client.log 2>/dev/null
+rm client.log
 ./dome_client -a ca/ca/ca_cert.pem -c ca/client/client_cert.pem -k ca/client/private/client_key.pem -vvv -s localhost -l client.log $@

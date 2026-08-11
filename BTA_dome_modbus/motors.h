@@ -19,7 +19,11 @@
 #pragma once
 
 #define MAX_SPEED       (700.)
+#define SPEED_TOLERANCE (0.01)
+// emulation acceleration, min^-2
+#define EMUL_ACCEL      (20000.)
 #define MAX_CURRENT     (15.)
+#define DEFAULT_CURRENT (10.)
 #define MOTORS_AMOUNT   (10)
 // low, medium and high speeds
 #define LSpeed    71
@@ -45,15 +49,23 @@ typedef struct{
     double current;
 } motor_state_t;
 
-void motors_stop();
 double motors_get_curntsetpoint();
-int motors_set_curntsetpoint(double val);
-double motors_get_speedsetpoint();
-int motors_set_speedsetpoint(double val);
-int motors_get_activenum();
-int motors_set_activenum(int N);
-int motors_get_actcurrent(double *val);
-int motors_get_actspeed(double *val);
-int motors_get_actstatus(int *val);
+int motors_set_curntsetpoint(double);
 
-void modbus_close();
+double motors_get_speedsetpoint();
+int motors_set_speedsetpoint(double);
+
+int motors_get_activenum();
+int motors_set_activenum(int);
+
+void motors_stop();
+int motors_get_actcurrent(double*);
+int motors_get_actspeed(double*);
+int motors_get_actstatus(int*);
+
+extern void (*motors_process)();
+
+extern int (*modbus_open)(const char *, int);
+extern void (*modbus_close)();
+
+void set_emulation_mode();

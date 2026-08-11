@@ -46,8 +46,10 @@ glob_pars G = {
     .key = DEFKEY,
     .ca = DEFCA,
     .acc_timeout = 1.,
+#ifdef CLIENT
     .T_sync_lost = 5.,
     .speedchk_interval = 10.,
+#endif
 };
 
 /*
@@ -66,12 +68,15 @@ static sl_option_t cmdlnopts[] = {
     {"ca",      NEED_ARG,   NULL,   'a',    arg_string, APTR(&G.ca),        _("path to SSL ca - base cert (default:" DEFCA ")")},
     {"timeout", NEED_ARG,   NULL,   't',    arg_double, APTR(&G.acc_timeout),_("network timeout, s (default: 1)")},
 #ifdef SERVER
+    {"emulation",NO_ARGS,   NULL,   'e',    arg_int,    APTR(&G.emulmode),  _("run server in emulation mode")},
+    {"serialdev",NEED_ARG,  NULL,   'd',    arg_string, APTR(&G.serialpath),_("path to RS-485 device")},
+    {"serialspeed",NEED_ARG,NULL,   's',    arg_int,    APTR(&G.serialspeed),_("speed of serial device")},
 #endif
 #ifdef CLIENT
     {"mottmout",NEED_ARG,   NULL,   'M',    arg_double, APTR(&G.speedchk_interval), _("interval of motor's speed checking, s (default: 10)")},
     {"server",  NEED_ARG,   NULL,   's',    arg_string, APTR(&G.serverhost), _("server node, IP:port")},
     {"lostsync",NEED_ARG,   NULL,   'L',    arg_double, APTR(&G.T_sync_lost),_("\"lost synchronization\" timeout, s (default: 5)")},
-    {"emulation",NO_ARGS,   NULL,   'e',    arg_int,    APTR(&G.emulmode),  _("run even in emulation mode")},
+    {"emulation",NO_ARGS,   NULL,   'e',    arg_int,    APTR(&G.emulmode),  _("run client even in emulation mode")},
     {"terminal",NO_ARGS,    NULL,   'T',    arg_int,    APTR(&G.terminal),  _("run client in terminal mode")},
 #endif
    end_option

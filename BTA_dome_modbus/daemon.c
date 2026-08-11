@@ -58,6 +58,7 @@ int start_daemon(){
     int port = atoi(G.port);
     if(port < 1024 || port > 65535){
         LOGERR("Wrong port value: %d", port);
+        WARNX("Wrong port value: %d", port);
         return 1;
     }
     FILE *f = fopen(G.cert, "r");
@@ -66,9 +67,7 @@ int start_daemon(){
     f = fopen(G.key, "r");
     if(!f) ERR("Can't open certificate key file %s", G.key);
     fclose(f);
-#ifdef EBUG
-    printf("cert: %s, key: %s\n", G.cert, G.key);
-#endif
+    DBG("cert: %s, key: %s\n", G.cert, G.key);
 #ifdef CLIENT
     //DBG("server: %s", G.serverhost);
     if(!G.serverhost) ERRX("Point server name");

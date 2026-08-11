@@ -142,6 +142,7 @@ void serverproc(SSL_CTX *ctx, int fd){
     //char buf[64];
     //int P = 0;
     while(isrunning){
+        motors_process();
         /*double tnow = sl_dtime();
         if(tnow - t0 > 5. && nfd > 1){ // broadcasting message
             //DBG("send ping");
@@ -269,6 +270,11 @@ sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     }
     snprintf(value,  SL_VAL_LEN-1, "%.3f", motors_get_speedsetpoint());
     return RESULT_SILENCE;
+}
+
+sl_sock_hresult_e stop_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    motors_stop();
+    return RESULT_OK;
 }
 
 // binary search handler by name

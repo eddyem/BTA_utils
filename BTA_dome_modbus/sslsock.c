@@ -26,6 +26,7 @@
 #include "cmdlnopts.h"
 #include "sslsock.h"
 #ifdef SERVER
+#include "motors.h"
 #include "server.h"
 #else
 #include "client.h"
@@ -132,11 +133,17 @@ static SSL_CTX* InitCTX(void){
 }
 
 int open_socket(){
-    int fd;
+    FNAME();
     SSL_library_init();
     SSL_CTX *ctx = InitCTX();
-    fd = OpenConn(atoi(G.port));
+    int fd = OpenConn(atoi(G.port));
 #ifdef SERVER
+    if(G.emulmode) set_emulation_mode();
+    if(!modbus_open(G.serialpath, G.serialspeed)){
+        LOGERR("Can't open %s @%d", G.serialpath, G.serialspeed);
+        WARNX("Can't open %s @%d", G.serialpath, G.serialspeed);
+        return 1;
+    }
     serverproc(ctx, fd);
 #else
     if(G.terminal) terminal(ctx, fd);

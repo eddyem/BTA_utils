@@ -58,16 +58,17 @@ $(COBJDIR):
 	@mkdir $(COBJDIR)
 
 ifneq ($(MAKECMDGOALS),clean)
--include $(DEPS)
+-include $(SDEPS)
+-include $(CDEPS)
 endif
 
-$(COBJDIR)/%.o: %.c
+$(COBJDIR)/%.o: %.c 
 	@echo -e "\tCC $<"
-	$(CC) -MD -c $(LDFLAGS) $(CFLAGS) $(DEFINES) -o $@ $<
+	$(CC) -MP -MMD -c $(LDFLAGS) $(CFLAGS) $(DEFINES) -o $@ $<
 
-$(SOBJDIR)/%.o: %.c
+$(SOBJDIR)/%.o: %.c 
 	@echo -e "\t\tCC $<"
-	$(CC) -MD -c $(LDFLAGS) $(CFLAGS) $(DEFINES) -o $@ $<
+	$(CC) -MP -MMD -c $(LDFLAGS) $(CFLAGS) $(DEFINES) -o $@ $<
 
 clean:
 	@echo -e "\t\tCLEAN"

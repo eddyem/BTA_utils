@@ -25,11 +25,12 @@
 
 // Handlers in this list MUST be in sortered order (by name)!!!
 #define HANDLERS_LIST() \
-NEW_HANDLER(motcurrent, "motor current") \
+NEW_HANDLER(motcurrent, "maximal motor current") \
 NEW_HANDLER(motnum, "active motor number for status requests") \
 NEW_HANDLER(motspeed, "motor speed") \
 NEW_HANDLER(motstatus, "motor status") \
 NEW_HANDLER(speed, "speed setter") \
+NEW_HANDLER(stop, "stop motors") \
 
 /*NEW_HANDLER(current, "current setter") \*/
 /*NEW_HANDLER(relay, "relay command") \*/
