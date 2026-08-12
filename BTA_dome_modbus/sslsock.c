@@ -139,7 +139,7 @@ int open_socket(){
     int fd = OpenConn(atoi(G.port));
 #ifdef SERVER
     if(G.emulmode) set_emulation_mode();
-    if(!modbus_open(G.serialpath, G.serialspeed)){
+    if(!motors_open(G.serialpath, G.serialspeed)){
         LOGERR("Can't open %s @%d", G.serialpath, G.serialspeed);
         WARNX("Can't open %s @%d", G.serialpath, G.serialspeed);
         return 1;

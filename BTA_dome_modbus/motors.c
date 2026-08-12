@@ -17,9 +17,11 @@
  */
 
 #include <math.h>
+#include <modbus/modbus.h>
 #include <usefull_macros.h>
 
 #include "motors.h"
+#include "esq770.h"
 
 #if 0
 Протокол (s - сеттер, g - getteer):
@@ -34,6 +36,7 @@ speed=xx - (sg) уставка скорости
 current=xx - (sg) уставка тока
 #endif
 
+static modbus_t *modbus_ctx = NULL;
 static motor_state_t motstates[MOTORS_AMOUNT] = {0};
 
 // set points
@@ -57,20 +60,42 @@ static union{
 // current motor for status etc. getters (0..MOTORS_AMOUNT-1)
 static int motindex = 0;
 
-// open modbus @ given speed; return FALSE if failed
-static int modbus_open_m(const char _U_ *path, int _U_ speed){
-    return FALSE;
+// close modbus connection
+static void motors_close_m(){
+    if(modbus_ctx){
+        modbus_close(modbus_ctx);
+        modbus_free(modbus_ctx);
+        modbus_ctx = NULL;
+    }
 }
-static int modbus_open_e(const char _U_ *path, int _U_ speed){
-    return TRUE;
+static void motors_close_e(){ // stub for emulation mode
+    ;
 }
 
-// close modbus connection
-static void modbus_close_m(){
-    ;
+// open modbus @ given speed; return FALSE if failed
+static int motors_open_m(const char *path, int speed){
+    if(speed < 1200 || !path){
+        WARNX("Point path and right speed");
+        return FALSE;
+    }
+    if(modbus_ctx) motors_close_m();
+    modbus_ctx = modbus_new_rtu(path, speed, 'N', 8, 1);
+    if(!modbus_ctx){
+        WARNX("Can't open device %s @ %d", path, speed);
+        LOGERR("Can't open device %s @ %d", path, speed);
+        return FALSE;
+    }
+    modbus_set_response_timeout(modbus_ctx, 0, 50000); // 50ms response timeout
+    if(modbus_connect(modbus_ctx) < 0){
+        WARNX("Can't connect to device %s", path);
+        LOGERR("Can't connect to device %s", path);
+        motors_close_m();
+        return FALSE;
+    }
+    return TRUE;
 }
-static void modbus_close_e(){
-    ;
+static int motors_open_e(const char _U_ *path, int _U_ speed){ // stub for emulation mode
+    return TRUE;
 }
 
 
@@ -136,7 +161,66 @@ int motors_get_actstatus(int *val){
 
 // main motors processing routine
 static void motors_process_m(){
-    ;
+    static int curN = 0, errctr = 0;
+    static int error_cnt[MOTORS_AMOUNT] = {0};
+    if(!modbus_ctx || errctr > 100){
+        LOGERR("Modbus not inited or other error!");
+        ERRX("Modbus not inited or other error!");
+    }
+    if(flags.all){
+        if(-1 == modbus_set_slave(modbus_ctx, 0)) goto reg_error;
+        if(flags.stop){
+            speedSet = 0.;
+            // send command stop
+            if(-1 == modbus_write_register(modbus_ctx, REG_CMD, CMD_STOP)) goto reg_error;
+        }
+        if(flags.change_current){
+            // TODO: send command "max current"?
+        }
+        if(flags.change_speed){
+            // send command "set speed"
+            uint16_t dir = (speedSet > 0.) ? CMD_FORWARD : CMD_REVERSE;
+            uint16_t freq = (uint16_t)(fabs(speedSet) * FREQ_SCALE);
+            if(-1 == modbus_write_register(modbus_ctx, REG_FREQ_SET, freq)) goto reg_error;
+            if(-1 == modbus_write_register(modbus_ctx, REG_CMD, dir)) goto reg_error;
+        }
+        flags.all = 0;
+    }
+    // set slave N
+    if(-1 == modbus_set_slave(modbus_ctx, curN)) goto reg_error;
+    // ask for speed/status/current
+    uint16_t regs[2];
+    if(-1 == modbus_read_registers(modbus_ctx, REG_STATUS_MAIN, 2, regs)){
+        if((++error_cnt[curN]) > MAX_ERRORS){ // not answer - set MOT_OFF status
+            motstates[curN].status = MOT_OFF;
+            LOGDBG("Motor %d not responce", curN);
+        }
+        if(++curN >= MOTORS_AMOUNT) curN = 0;
+        return;
+    }
+    error_cnt[curN] = 0;
+    switch(regs[0]){
+        case STATUS_CW:
+        case STATUS_CCW:
+            motstates[curN].status = MOT_RUN;
+            break;
+        case STATUS_STOP:
+            motstates[curN].status = MOT_SLEEP;
+            break;
+        default:
+            motstates[curN].status = MOT_ERROR;
+    }
+    if(regs[1] & STATUS_READY_MASK) motstates[curN].status = MOT_ERROR;
+    if(motstates[curN].status == MOT_ERROR) modbus_write_register(modbus_ctx, REG_CMD, CMD_RESET_FAULT);
+    if(-1 == modbus_read_registers(modbus_ctx, REG_OUTPUT_FREQ, 1, &regs[0])) regs[0] = 0;
+    if(-1 == modbus_read_registers(modbus_ctx, REG_OUTPUT_CURRENT, 1, &regs[1])) regs[1] = 0;
+    motstates[curN].speed = ((double)regs[0]) / FREQ_SCALE;
+    motstates[curN].current = ((double)regs[1]) / CURRENT_SCALE;
+    if(++curN >= MOTORS_AMOUNT) curN = 0;
+    errctr = 0;
+    return;
+reg_error:
+    ++errctr;
 }
 static void motors_process_e(){
     static double t0 = -1., curspeed = 0.;
@@ -179,13 +263,13 @@ static void motors_process_e(){
     }
 }
 
-int (*modbus_open)(const char *, int) = modbus_open_m;
-void (*modbus_close)() = modbus_close_m;
+int (*motors_open)(const char *, int) = motors_open_m;
+void (*motors_close)() = motors_close_m;
 void (*motors_process)() = motors_process_m;
 
 void set_emulation_mode(){
     LOGMSG("Set emulation mode");
-    modbus_open =  modbus_open_e;
-    modbus_close = modbus_close_e;
+    motors_open =  motors_open_e;
+    motors_close = motors_close_e;
     motors_process = motors_process_e;
 }

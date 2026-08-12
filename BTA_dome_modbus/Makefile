@@ -47,6 +47,7 @@ $(CLIENT) : $(COBJDIR) $(COBJS)
 
 
 $(SERVER) : DEFINES += -DSERVER
+$(SERVER) : LDFLAGS += -lmodbus
 $(SERVER) : $(SOBJDIR) $(SOBJS)
 	@echo -e "\tLD $(SERVER)"
 	$(CC) $(LDFLAGS) $(SOBJS) -o $(SERVER)

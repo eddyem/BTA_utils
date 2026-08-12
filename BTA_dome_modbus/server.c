@@ -208,7 +208,7 @@ void serverproc(SSL_CTX *ctx, int fd){
     }
     for(int i = 0; i < nfd; ++i) SSL_free(ssls[i]);
     motors_stop();
-    modbus_close();
+    motors_close();
 }
 
 /****************** Protocol handlers (return 0 in case of success or error code >0 if failed) ******************/

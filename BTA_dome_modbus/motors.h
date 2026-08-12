@@ -18,17 +18,21 @@
 
 #pragma once
 
-#define MAX_SPEED       (700.)
-#define SPEED_TOLERANCE (0.01)
+// max errors per motor to mean it OFF
+#define MAX_ERRORS      5
+
+#define MAX_SPEED       700.
+#define SPEED_TOLERANCE 0.01
 // emulation acceleration, min^-2
-#define EMUL_ACCEL      (20000.)
-#define MAX_CURRENT     (15.)
-#define DEFAULT_CURRENT (10.)
-#define MOTORS_AMOUNT   (10)
+#define EMUL_ACCEL      20000.
+#define MAX_CURRENT     15.
+#define DEFAULT_CURRENT 10.
+#define MOTORS_AMOUNT   10
 // low, medium and high speeds
-#define LSpeed    71
-#define MSpeed    350
-#define HSpeed    610
+#define LSpeed          71
+#define MSpeed          350
+#define HSpeed          610
+
 
 // ID of first motor minus 1
 #define START_ID        (0)
@@ -65,7 +69,7 @@ int motors_get_actstatus(int*);
 
 extern void (*motors_process)();
 
-extern int (*modbus_open)(const char *, int);
-extern void (*modbus_close)();
+extern int (*motors_open)(const char *, int);
+extern void (*motors_close)();
 
 void set_emulation_mode();
