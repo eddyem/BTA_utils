@@ -27,6 +27,9 @@
 // handlers: `index` - command index in list, `value` - setter's value or getter's answer
 typedef sl_sock_hresult_e (*handler_t)(int index, char value[SL_VAL_LEN]);
 
+// == TRUE if dome management is forbidden
+static int forbidden = FALSE;
+
 // struct for setters/getters
 typedef struct{
     const char *command;
@@ -70,7 +73,7 @@ static int handle_connection(SSL *ssl){
     int r = read_string(ssl, buf, IOBUF_LEN);
     if(r < 0) return 0;
     int sd = SSL_get_fd(ssl);
-    DBG("Client %d msg: \"%s\"\n", sd, buf);
+    //DBG("Client %d msg: \"%s\"\n", sd, buf);
     LOGDBG("fd=%d, message=%s", sd, buf);
     int got = sl_get_keyval(buf, key, val);
     if(got == 0){
@@ -81,11 +84,11 @@ static int handle_connection(SSL *ssl){
     sl_sock_hresult_e result = RESULT_BADKEY;
     if(-1 != h_idx){
         if(got == 1){
-            DBG("getter #%d", h_idx);
+            //DBG("getter #%d", h_idx);
             val[0] = 0; // getter
-        }else DBG("setter #%d", h_idx);
+        } //else DBG("setter #%d", h_idx);
         result = command_list[h_idx].handler(h_idx, val);
-        DBG("result: %d", result);
+        //DBG("result: %d", result);
     }else{
         DBG("Command not found or help?");
         // check if user asks for help
@@ -186,6 +189,8 @@ void serverproc(SSL_CTX *ctx, int fd){
                     WARNX("SSL_accept()");
                     SSL_free(ssl);
                     send(client, sslerr, sizeof(sslerr)-1, MSG_NOSIGNAL);
+                    shutdown(client, SHUT_WR);
+                    usleep(50000);
                     close(client);
                 }
             }
@@ -212,6 +217,16 @@ void serverproc(SSL_CTX *ctx, int fd){
 }
 
 /****************** Protocol handlers (return 0 in case of success or error code >0 if failed) ******************/
+sl_sock_hresult_e forbidden_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    int I;
+    if(ISSETTER(value)){
+        if(!sl_str2i(&I, value)) return RESULT_BADVAL;
+        forbidden = I;
+        return RESULT_OK;
+    }
+    snprintf(value,  SL_VAL_LEN-1, "%d", forbidden);
+    return RESULT_SILENCE;
+}
 // key - keyword (command name), value - i/o buffer (value[0]==0 for getters)
 /*
 sl_sock_hresult_e current_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
@@ -265,6 +280,7 @@ sl_sock_hresult_e relay_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
 sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     double D;
     if(ISSETTER(value)){
+        if(forbidden) return RESULT_FAIL;
         if(!sl_str2d(&D, value) || !motors_set_speedsetpoint(D)) return RESULT_BADVAL;
         return RESULT_OK;
     }
@@ -289,7 +305,7 @@ static int search_handler(const char *name){
         // Compare the target string with the struct's string field
         int res = strcmp(name, command_list[mid].command);
         if(res == 0){
-            DBG("Found %s by %d iterations\n", name, iter);
+            //DBG("Found %s by %d iterations\n", name, iter);
             return mid; // Target found, return index
         }else if(res < 0){
             high = mid - 1; // Target is smaller, search left half

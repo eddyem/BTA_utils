@@ -25,6 +25,7 @@
 
 // Handlers in this list MUST be in sortered order (by name)!!!
 #define HANDLERS_LIST() \
+NEW_HANDLER(forbidden, "forbid (1) or permit (0) dome operations") \
 NEW_HANDLER(motcurrent, "maximal motor current") \
 NEW_HANDLER(motnum, "active motor number for status requests") \
 NEW_HANDLER(motspeed, "motor speed") \

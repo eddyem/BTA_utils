@@ -1,3 +1,3 @@
 #!/bin/bash
-rm server.log
+rm -f server.log
 ./dome_server -a ca/ca/ca_cert.pem -c ca/server/server_cert.pem -k ca/server/private/server_key.pem -vvvl server.log $@

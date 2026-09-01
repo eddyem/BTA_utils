@@ -6,6 +6,7 @@ cmdlnopts.c
 cmdlnopts.h
 daemon.c
 daemon.h
+esq770.h
 handlers_list.h
 main.c
 motors.c

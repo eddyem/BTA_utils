@@ -102,7 +102,7 @@ static sl_sock_hresult_e send_motor_command(SSL *ssl, const char *cmd, value_t *
         }
     }else l = snprintf(buf, IOBUF_LEN-1, "%s\n", cmd);
     buf[l] = 0;
-    DBG("Send to server: %s", buf);
+    //DBG("Send to server: %s", buf);
     SSL_write(ssl, buf, l);
     double t0 = sl_dtime();
     while(sl_dtime() - t0 < G.acc_timeout){
@@ -113,35 +113,35 @@ static sl_sock_hresult_e send_motor_command(SSL *ssl, const char *cmd, value_t *
             ERRX("Disconnected");
         }
         buf[l] = 0;
-        DBG("Received: \"%s\"\n", buf);
+        //DBG("Received %d bytes: \"%s\"", l, buf);
         // parser
         char key[SL_KEY_LEN] = {0}, val[SL_VAL_LEN] = {0};
         int got = sl_get_keyval(buf, key, val);
-        DBG("got=%d, key=%s, val=%s", got, key, val);
+        //DBG("got=%d, key=%s, val=%s", got, key, val);
         if(got == 0){
-            DBG("Empty answer");
+            //DBG("Empty answer");
             continue;
         }
-        if((!setter && got == 1) || (setter && got == 2)){ // wrong answer
+        if((setter && got == 2) || (getter && got == 1)){ // wrong answer
             DBG("wrong answer");
             continue;
         }
-        if(setter){ // check errcode in answer
+        if(!getter){ // check errcode in answer
             if(got == 2){
-                DBG("Getter answer");
+                DBG("Getter answer when setter called");
                 continue;
             }
             for(int i = 0; i < RESULT_SILENCE; ++i){
-                DBG("compare '%s' and '%s'", key, Ecodes[i]);
+                //DBG("compare '%s' and '%s'", key, Ecodes[i]);
                 if(0 == strcmp(key, Ecodes[i])){
-                    DBG("Found errcode for '%s': %d", key, i);
+                    //DBG("Found errcode for '%s': %d", key, i);
                     return i; // found
                 }
             }
         }else{ // check "cmd = val"
             if(got == 1) continue;
             if(strcmp(cmd, key)) continue;
-            if(getter){
+            //if(getter){
                 if(getter->type == ARG_TYPE_INT){
                     long long ll;
                     if(!sl_str2ll(&ll, val)) continue;
@@ -151,10 +151,12 @@ static sl_sock_hresult_e send_motor_command(SSL *ssl, const char *cmd, value_t *
                     if(!sl_str2d(&d, val)) continue;
                     getter->d = d;
                 }
-            }
+            //}
+            //DBG("Getter OK");
             return RESULT_OK;
         }
     }
+    DBG("FAILED");
     return RESULT_FAIL;
 }
 
@@ -195,10 +197,18 @@ static int check_motor(SSL *ssl, int motno){
     for(int i = 0; i < MOTORS_AMOUNT; ++i){
         int s = MotorState[i].status;
         if(s == MOT_OFF) continue;
+        if(s == MOT_ERROR){
+            *msg = MesgWarn;
+            printf(msg+1, "Dome: Error in motor %d!\n", i+1);
+            SendMessage(msg);
+            MotorState[i].status = MOT_OFF;
+        }
         if(status < s) status = s;
-        speed += MotorState[i].speed;
-        current += MotorState[i].current;
-        ++N;
+        if(status == MOT_RUN){
+            speed += MotorState[i].speed;
+            current += MotorState[i].current;
+            ++N;
+        }
     }
     if(N){
         speed /= (double)N;
@@ -209,7 +219,7 @@ static int check_motor(SSL *ssl, int motno){
         sprintf(msg+1, "Dome: All motors are Off!\n");
         SendMessage(msg);
     }else if(status != MOT_OFF && CommonState.status == MOT_OFF){
-        *msg = MesgFault;
+        *msg = MesgInfor;
         sprintf(msg+1, "Dome: Start motors!\n");
         SendMessage(msg);
     }
@@ -222,15 +232,22 @@ static int check_motor(SSL *ssl, int motno){
 // check for speed change and send given command to server
 static void chk_dome_speed(SSL *ssl){
     static int old_state = D_Off;
+    static double tlast = 0.;
     int new_state = Dome_Speed;
-    double tlast = 0.;
+    if(D_Locked /*|| !PEP_K_On*/){
+        if(old_state != D_Off) new_state = D_Off; // stop dome in locked state
+        else return;
+    }
     if(new_state == old_state){
         if(sl_dtime() - tlast < G.speedchk_interval) return;
+        DBG("Time - tlast = %g", sl_dtime() - tlast);
         if(CommonState.speed == set_speed){
             tlast = sl_dtime();
             return;
         }
+        DBG("Speed set command still not sent");
     }
+    DBG("state changed from %d to %d", old_state, new_state);
     double new_speed = 0.;
     switch(new_state){
     case D_Lplus:
@@ -256,12 +273,15 @@ static void chk_dome_speed(SSL *ssl){
     }
     value_t Dval = {.type = ARG_TYPE_DOUBLE, .d = new_speed};
     if(RESULT_OK == send_motor_command(ssl, cmd_speed, &Dval, NULL)){
+        DBG("New speed %g sent", new_speed);
         if(RESULT_OK == send_motor_command(ssl, cmd_speed, NULL, &Dval) && fabs(Dval.d - new_speed) <= FLT_EPSILON){
+            DBG("Got answer with speed set: %g", Dval.d);
             old_state = new_state; // all OK, command in work
             set_speed = new_speed;
+            speedSEWD = new_speed;
             tlast = sl_dtime();
-        }
-    }
+        }else WARNX("error getting speed");
+    }else WARNX("error sending motor command");
 }
 
 // SHM parser; return FALSE if SHM is in erroreous state
@@ -284,6 +304,14 @@ static int process_system(SSL *ssl){
         if(++brokenshmctr < 10) return TRUE;
         return FALSE;
     }else brokenshmctr = 0;
+    // set/reset PEP_K_On by information from server!
+    value_t Ival = {.type = ARG_TYPE_INT, .i = 0};
+    if(RESULT_OK != send_motor_command(ssl, cmd_forbidden, &Ival, NULL)) return FALSE;
+#ifdef EBUG
+    //if(PEP_K_On != Ival.i) DBG("Set PEP_K_On to %d", !Ival.i);
+#endif
+    if(Ival.i) PEP_K_On = 0;
+    else PEP_K_On = 1;
     static int modelused = FALSE;
     if(!G.emulmode){
         if(UseModel == FullModel){ // model
@@ -307,10 +335,15 @@ static int process_system(SSL *ssl){
     }
     if(check_motor(ssl, curMotNo)){
         // TODO: check state for errors
-        if(++curMotNo >= MOTORS_AMOUNT) curMotNo = 0;
+        if(++curMotNo == DomeSEW_N){ // set `struct SEWdata` parameters
+            motor_state_t *st = &MotorState[curMotNo];
+            statusSEWD = st->status;
+            vel_SEWD = st->speed;
+            currentSEWD = st->current;
+        }
+        if(curMotNo >= MOTORS_AMOUNT) curMotNo = 0;
     }
-    if(!D_Locked && Dome_State != D_Off) chk_dome_speed(ssl);
-    ;
+    chk_dome_speed(ssl);
     return TRUE;
 }
 

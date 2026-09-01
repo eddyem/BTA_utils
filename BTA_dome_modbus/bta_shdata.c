@@ -1,5 +1,6 @@
 // (C) V.S. Shergin, SAO RAS
 #include <err.h>
+#include <crypt.h>
 #include "bta_shdata.h"
 
 #pragma pack(push, 4)
@@ -182,7 +183,12 @@ void get_cmd_queue(struct CMD_Queue *cq, int server){
     cq->side = server;
     if(server){
         char buf[120];  /* п╡я▀п╠я─п╬я│п╦я┌я▄ п╡я│п╣ п╨п╬п╪п╟п╫п╢я▀ п╦п╥ п╬я┤п╣я─п╣п╢п╦ */
+/*
+В структурах для очередей сообщений используется int32_t mtype, но системные вызовы (msgsnd, msgrcv) ожидают long (на 64-битных системах 8 байт). Это нарушает выравнивание и приводит к неправильному чтению/записи данных.
+Особенно опасно: при очистке очереди на сервере:
+*/
         while(msgrcv(cq->id, (struct msgbuf *)buf, 112, 0, IPC_NOWAIT) > 0);
+// Размер данных (112) вычислен без учёта размера long, что может привести к сбоям.
     }else
         snd_id = cq->id;
     cq->acckey = 0;

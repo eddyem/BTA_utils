@@ -21,10 +21,11 @@
 // max errors per motor to mean it OFF
 #define MAX_ERRORS      5
 
-#define MAX_SPEED       700.
+// freq_scale == 100, so for UINT16_t we can't make speed more than 655.35
+#define MAX_SPEED       655.
 #define SPEED_TOLERANCE 0.01
 // emulation acceleration, min^-2
-#define EMUL_ACCEL      20000.
+#define EMUL_ACCEL      10000.
 #define MAX_CURRENT     15.
 #define DEFAULT_CURRENT 10.
 #define MOTORS_AMOUNT   10
@@ -33,10 +34,12 @@
 #define MSpeed          350
 #define HSpeed          610
 
+// modbus responce timeout, ms
+#define MODBUS_RESPONCE_TIMEOUT 100000
 
-// ID of first motor minus 1
-#define START_ID        (0)
-// ID of motor (n=1..MOTORS_AMOUNT)
+// ID of first motor
+#define START_ID        (1)
+// ID of nth motor (n=0..MOTORS_AMOUNT-1 - index)
 #define MOTOR_ID(n)     (n + START_ID)
 
 // motors' status

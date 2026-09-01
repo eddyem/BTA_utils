@@ -42,6 +42,7 @@ static motor_state_t motstates[MOTORS_AMOUNT] = {0};
 // set points
 static double currentSet = DEFAULT_CURRENT, speedSet = 0.;
 // flags for main routine
+// TODO: add mutex or make flags atomic
 static union{
     struct{
         uint32_t change_speed : 1;
@@ -85,7 +86,7 @@ static int motors_open_m(const char *path, int speed){
         LOGERR("Can't open device %s @ %d", path, speed);
         return FALSE;
     }
-    modbus_set_response_timeout(modbus_ctx, 0, 50000); // 50ms response timeout
+    modbus_set_response_timeout(modbus_ctx, 0, MODBUS_RESPONCE_TIMEOUT); // response timeout
     if(modbus_connect(modbus_ctx) < 0){
         WARNX("Can't connect to device %s", path);
         LOGERR("Can't connect to device %s", path);
@@ -135,7 +136,7 @@ int motors_set_speedsetpoint(double val){
 int motors_get_activenum(){ return motindex; }
 // set number of active motor
 int motors_set_activenum(int N){
-    DBG("Set active motor=%d", N);
+    //DBG("Set active motor=%d", N);
     if(N < 0 || N >= MOTORS_AMOUNT) return FALSE;
     motindex = N;
     return TRUE;
@@ -170,24 +171,29 @@ static void motors_process_m(){
     if(flags.all){
         if(-1 == modbus_set_slave(modbus_ctx, 0)) goto reg_error;
         if(flags.stop){
+            DBG("User asks to stop");
             speedSet = 0.;
             // send command stop
             if(-1 == modbus_write_register(modbus_ctx, REG_CMD, CMD_STOP)) goto reg_error;
+            flags.stop = 0;
         }
         if(flags.change_current){
+            DBG("User asks to change current to %g", currentSet);
             // TODO: send command "max current"?
+            flags.change_current = 0;
         }
         if(flags.change_speed){
+            DBG("User asks to change speed to %g", speedSet);
             // send command "set speed"
             uint16_t dir = (speedSet > 0.) ? CMD_FORWARD : CMD_REVERSE;
             uint16_t freq = (uint16_t)(fabs(speedSet) * FREQ_SCALE);
-            if(-1 == modbus_write_register(modbus_ctx, REG_FREQ_SET, freq)) goto reg_error;
             if(-1 == modbus_write_register(modbus_ctx, REG_CMD, dir)) goto reg_error;
+            if(-1 == modbus_write_register(modbus_ctx, REG_FREQ_SET, freq)) goto reg_error;
+            flags.change_speed = 0;
         }
-        flags.all = 0;
     }
     // set slave N
-    if(-1 == modbus_set_slave(modbus_ctx, curN)) goto reg_error;
+    if(-1 == modbus_set_slave(modbus_ctx, MOTOR_ID(curN))) goto reg_error;
     // ask for speed/status/current
     uint16_t regs[2];
     if(-1 == modbus_read_registers(modbus_ctx, REG_STATUS_MAIN, 2, regs)){
