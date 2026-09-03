@@ -52,6 +52,9 @@
 // REG_STATUS_EXT bit
 #define STATUS_READY_MASK       0x01
 
-#define FREQ_SCALE              100.
+// convert rev/min to frequency register value and back
+// 100 * revmin / 60 * 4; 100 - scale, 60 - min2sec, 4 - pole amount
+#define REVMIN2FREQ(r)          (uint16_t)((100. * (r)) / 15.)
+#define FREQ2REVMIN(f)          ((((double)(f)) * 15.) / 100.)
 #define CURRENT_SCALE           10.
 

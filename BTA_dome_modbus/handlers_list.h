@@ -30,6 +30,7 @@ NEW_HANDLER(motcurrent, "maximal motor current") \
 NEW_HANDLER(motnum, "active motor number for status requests") \
 NEW_HANDLER(motspeed, "motor speed") \
 NEW_HANDLER(motstatus, "motor status") \
+NEW_HANDLER(nmotors, "amount of working motors") \
 NEW_HANDLER(speed, "speed setter") \
 NEW_HANDLER(stop, "stop motors") \
 

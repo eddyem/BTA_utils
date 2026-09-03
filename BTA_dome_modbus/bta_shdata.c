@@ -1,6 +1,10 @@
 // (C) V.S. Shergin, SAO RAS
 #include <err.h>
 #include <crypt.h>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+
 #include "bta_shdata.h"
 
 #pragma pack(push, 4)
@@ -15,16 +19,6 @@ struct CMD_Queue ucmd = {{"Ucmd"}, 0200,0,-1,0};
 static char msg[MSGLEN];
 #define WARN(...) warn(__VA_ARGS__)
 #define PERR(...)  do{snprintf(msg, MSGLEN, __VA_ARGS__); perror(msg);} while(0)
-#ifdef EBUG
-    #define FNAME() fprintf(stderr, "\n%s (%s, line %d)\n", __func__, __FILE__, __LINE__)
-    #define DBG(...) do{fprintf(stderr, "%s (%s, line %d): ", __func__, __FILE__, __LINE__); \
-                    fprintf(stderr, __VA_ARGS__);           \
-                    fprintf(stderr, "\n");} while(0)
-#else
-    #define FNAME()  do{}while(0)
-    #define DBG(...) do{}while(0)
-#endif //EBUG
-
 
 #ifndef BTA_MODULE
 volatile struct BTA_Data *sdt;
@@ -141,7 +135,7 @@ int get_shm_block(volatile struct SHM_Block *sb, int server) {
         PERR("Can't prevents swapping of shared memory segment '%s'",sb->key.name);
         return 0;
     }
-    DBG("Create & attach shared memory segment '%s' %dbytes", sb->key.name, sb->size);
+    fprintf(stderr, "Create & attach shared memory segment '%s' %dbytes", sb->key.name, sb->size);
     sb->side = server;
     if(sb->init != NULL)
         sb->init();

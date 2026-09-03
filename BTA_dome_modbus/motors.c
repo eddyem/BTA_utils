@@ -18,7 +18,6 @@
 
 #include <math.h>
 #include <modbus/modbus.h>
-#include <usefull_macros.h>
 
 #include "motors.h"
 #include "esq770.h"
@@ -38,6 +37,8 @@ current=xx - (sg) уставка тока
 
 static modbus_t *modbus_ctx = NULL;
 static motor_state_t motstates[MOTORS_AMOUNT] = {0};
+// amount of working motors
+static int n_working_motors = 0;
 
 // set points
 static double currentSet = DEFAULT_CURRENT, speedSet = 0.;
@@ -122,14 +123,15 @@ int motors_set_curntsetpoint(double val){
 double motors_get_speedsetpoint(){
     return speedSet;
 }
-// set setpoint of speed
-int motors_set_speedsetpoint(double val){
+// set setpoint of speed (rev/min)
+sl_sock_hresult_e motors_set_speedsetpoint(double val){
     double absval = fabs(val);
-    if(absval > MAX_SPEED) return FALSE;
+    if(absval > MAX_SPEED) return RESULT_BADVAL;
+    if(n_working_motors < MIN_WORKING_MOTORS) return RESULT_FAIL;
     DBG("Change speed setpoint to %g", val);
     speedSet = val;
     flags.change_speed = 1;
-    return TRUE;
+    return RESULT_OK;
 }
 
 // get number of active motor
@@ -160,21 +162,32 @@ int motors_get_actstatus(int *val){
     return TRUE;
 }
 
+// count amount of actual motors
+static void count_motors(){
+    n_working_motors = 0;
+    for(int i = 0; i < MOTORS_AMOUNT; ++i){
+        if(motstates[i].status != MOT_OFF) ++n_working_motors;
+    }
+}
+
 // main motors processing routine
 static void motors_process_m(){
     static int curN = 0, errctr = 0;
     static int error_cnt[MOTORS_AMOUNT] = {0};
     if(!modbus_ctx || errctr > 100){
-        LOGERR("Modbus not inited or other error!");
+        LOGERR("Modbus not inited or other error! Error counter = %d", errctr);
         ERRX("Modbus not inited or other error!");
     }
     if(flags.all){
-        if(-1 == modbus_set_slave(modbus_ctx, 0)) goto reg_error;
+        if(-1 == modbus_set_slave(modbus_ctx, 0)){
+            WARN("Can't set broadcast slave");
+            goto reg_error;
+        }
         if(flags.stop){
             DBG("User asks to stop");
             speedSet = 0.;
-            // send command stop
-            if(-1 == modbus_write_register(modbus_ctx, REG_CMD, CMD_STOP)) goto reg_error;
+            // send command stop (don't check return code for broadcast messages!
+            modbus_write_register(modbus_ctx, REG_CMD, CMD_STOP);
             flags.stop = 0;
         }
         if(flags.change_current){
@@ -186,43 +199,68 @@ static void motors_process_m(){
             DBG("User asks to change speed to %g", speedSet);
             // send command "set speed"
             uint16_t dir = (speedSet > 0.) ? CMD_FORWARD : CMD_REVERSE;
-            uint16_t freq = (uint16_t)(fabs(speedSet) * FREQ_SCALE);
-            if(-1 == modbus_write_register(modbus_ctx, REG_CMD, dir)) goto reg_error;
-            if(-1 == modbus_write_register(modbus_ctx, REG_FREQ_SET, freq)) goto reg_error;
+            uint16_t freq = REVMIN2FREQ(fabs(speedSet));
+            modbus_write_register(modbus_ctx, REG_CMD, dir);
+            modbus_write_register(modbus_ctx, REG_FREQ_SET, freq);
             flags.change_speed = 0;
         }
     }
     // set slave N
-    if(-1 == modbus_set_slave(modbus_ctx, MOTOR_ID(curN))) goto reg_error;
+    if(-1 == modbus_set_slave(modbus_ctx, MOTOR_ID(curN))){
+        WARN("Can't set slave %d", MOTOR_ID(curN));
+        goto reg_error;
+    }
     // ask for speed/status/current
     uint16_t regs[2];
-    if(-1 == modbus_read_registers(modbus_ctx, REG_STATUS_MAIN, 2, regs)){
+    if(-1 == modbus_read_registers(modbus_ctx, REG_STATUS_MAIN, 1, regs) ||
+       -1 == modbus_read_registers(modbus_ctx, REG_STATUS_EXT, 1, &regs[1])){
+        // WARN("err in # %d (errno=%d)", curN, errno);
         if((++error_cnt[curN]) > MAX_ERRORS){ // not answer - set MOT_OFF status
-            motstates[curN].status = MOT_OFF;
-            LOGDBG("Motor %d not responce", curN);
+            if(motstates[curN].status != MOT_OFF){
+                motstates[curN].status = MOT_OFF;
+                LOGDBG("Motor %d not responce", curN);
+                DBG("Motor %d not responce", curN);
+            }
+            error_cnt[curN] = 0;
         }
-        if(++curN >= MOTORS_AMOUNT) curN = 0;
+        if(++curN >= MOTORS_AMOUNT){
+            curN = 0;
+            count_motors();
+        }
         return;
     }
+    DBG("motor %d; status: %x, extstatus: %x", curN, regs[0], regs[1]);
     error_cnt[curN] = 0;
     switch(regs[0]){
         case STATUS_CW:
         case STATUS_CCW:
+            DBG("status: RUN");
             motstates[curN].status = MOT_RUN;
             break;
         case STATUS_STOP:
+            DBG("status: STOP");
             motstates[curN].status = MOT_SLEEP;
             break;
         default:
+            DBG("status: ERROR");
             motstates[curN].status = MOT_ERROR;
     }
-    if(regs[1] & STATUS_READY_MASK) motstates[curN].status = MOT_ERROR;
-    if(motstates[curN].status == MOT_ERROR) modbus_write_register(modbus_ctx, REG_CMD, CMD_RESET_FAULT);
+    if(regs[1] & STATUS_READY_MASK){
+        DBG("Motor not ready");
+        motstates[curN].status = MOT_ERROR;
+    }
+    if(motstates[curN].status == MOT_ERROR){
+        if(-1 == modbus_write_register(modbus_ctx, REG_CMD, CMD_RESET_FAULT))
+            WARN("Can't reset fault");
+    }
     if(-1 == modbus_read_registers(modbus_ctx, REG_OUTPUT_FREQ, 1, &regs[0])) regs[0] = 0;
     if(-1 == modbus_read_registers(modbus_ctx, REG_OUTPUT_CURRENT, 1, &regs[1])) regs[1] = 0;
-    motstates[curN].speed = ((double)regs[0]) / FREQ_SCALE;
+    motstates[curN].speed = FREQ2REVMIN(regs[0]);
     motstates[curN].current = ((double)regs[1]) / CURRENT_SCALE;
-    if(++curN >= MOTORS_AMOUNT) curN = 0;
+    if(++curN >= MOTORS_AMOUNT){
+        curN = 0;
+        count_motors();
+    }
     errctr = 0;
     return;
 reg_error:
@@ -279,3 +317,5 @@ void set_emulation_mode(){
     motors_close = motors_close_e;
     motors_process = motors_process_e;
 }
+
+int motors_get_working_amount(){ return n_working_motors; }

@@ -1,17 +1,11 @@
 // (C) V.S. Shergin, SAO RAS
 #pragma once
-#ifndef __BTA_SHDATA_H__
-#define __BTA_SHDATA_H__
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
-#include <string.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/msg.h>
-#include <errno.h>
 
 #pragma pack(push, 4)
 /*
@@ -41,7 +35,7 @@ extern volatile struct SHM_Block sdat;
  */
 struct CMD_Queue {
     union {
-        char  name[5];    // queue key
+        char  name[5];  // queue key
         key_t code;
     } key;
     int32_t mode;       // access mode (rwxrwxrwx)
@@ -318,7 +312,7 @@ enum{
     ,Balance  =0x10// balancing
 };
 // az_mode
-#define Az_Mode (sdt->az_mode) // azimuth reverce
+#define Az_Mode (sdt->az_mode) // azimuth reverse
 enum{
      Rev_Off = 0  // move by nearest way
     ,Rev_On       // move by longest way
@@ -425,12 +419,12 @@ enum{
 #define  mod_vel_D  (sdt->simvelf)
 // telescope & hand correction state
 /*
- * 0x8000 - азимут положительный
+ * 0x8000 - Az > 0
  * 0x4000 - отработка вкл.
- * 0x2000 - режим ведения
- * 0x1000 - отработка P2 вкл.
- * 0x01F0 - ск.корр. 0.2 0.4 1.0 2.0 5.0("/сек)
- * 0x000F - напр.корр. +Z -Z +A -A
+ * 0x2000 - tracking mode
+ * 0x1000 - P2 auto on
+ * 0x01F0 - corr. speeds 0.2 0.4 1.0 2.0 5.0("/sec)
+ * 0x000F - corr. +Z -Z +A -A
  */
 #define  code_KOST (sdt->kost)
 // different time (UTC, stellar, local)
@@ -698,69 +692,69 @@ struct BTA_Data {
     int32_t magic;                 // magic value
     int32_t version;               // BTA_Data_Ver
     int32_t size;                  // sizeof(struct BTA_Data)
-    int32_t pid;                   // main process PID
-    int32_t model;                 // model modes
-    int32_t timer;                 // timer selected
-    int32_t system;                // main system mode
-    int32_t sys_target;            // system pointing target
-    int32_t tel_focus;             // telescope focus type
-    double pc_coeff[8];            // pointing correction system coefficients
-    int32_t tel_state;             // telescope state
-    int32_t req_state;             // new (required) state
-    int32_t tel_hard_state;        // Power state
-    int32_t tel_mode;              // telescope mode
-    int32_t az_mode;               // azimuth reverce
-    int32_t p2_state;              // P2 motor state
-    int32_t p2_req_mode;           // P2 required state
-    int32_t focus_state;           // focus motor state
-    int32_t dome_state;            // dome motors state
-    int32_t pcor_mode;             // pointing correction mode
-    int32_t trkok_mode;            // tracking mode
-    double i_alpha, i_delta;       // input values
-    double s_alpha, s_delta;       // source
-    double v_alpha, v_delta;       // intrinsic vel.
-    double i_azim, i_zdist;        // input A/Z
-    double c_alpha, c_delta;       // calculated values
-    double tag_a, tag_z, tag_p;    // current values (from sensors)
-    double pcor_a, pcor_z, refr_z; // calculated corrections
-    double tcor_a, tcor_z, tref_z; // reverse calculation corr.
-    double diff_a, diff_z, diff_p; // coords difference
-    double vbasea,vbasez,vbasep;   // base object velocity
-    double diffva,diffvz,diffvp;   // correction by real speed
-    double speeda,speedz,speedp;   // motor speed
-    double m_time_precip;          // last precipitation time
-    uint8_t reserve[16];           // reserved
-    double rspeeda, rspeedz, rspeedp; // real motor speed (''/sec)
-    double simvela, simvelz, simvelp, simvelf, simveld; // model speed
-    uint32_t kost;                 // telescope & hand correction state
-    double m_time, s_time, l_time; // different time (UTC, stellar, local)
-    uint32_t ppndd_a, ppndd_z, ppndd_p, ppndd_b; // PPNDD sensor (rough) code
-    uint32_t dup_a, dup_z, dup_p, dup_f, dup_d;  // DUP sensor (precise) code (Gray code)
-    uint32_t low_a, low_z, low_p, low_f, low_d;  // binary 14-digit precise code
-    uint32_t code_a, code_z, code_p, code_b, code_f, code_d; // binary 23-digit rough code
-    uint32_t adc[8];               // ADC PCL818 (8-channel) codes
-    double val_a, val_z, val_p, val_b, val_f, val_d;
-    double val_t1, val_t2, val_t3, val_wnd; // calculated values
-    double val_alp, val_del;       // RA/Decl calculated by A/Z
-    double vel_a, vel_z, vel_p, vel_f, vel_d; // measured speed
+    int32_t pid;                   // main process PID [ServPID]
+    int32_t model;                 // model modes [UseModel]
+    int32_t timer;                 // timer selected [ClockType]
+    int32_t system;                // main system mode [Sys_Mode]
+    int32_t sys_target;            // system pointing target [Sys_Target]
+    int32_t tel_focus;             // telescope focus type [Tel_Focus]
+    double pc_coeff[8];            // pointing correction system coefficients [PosCor_Coeff]
+    int32_t tel_state;             // telescope state [Tel_State]
+    int32_t req_state;             // new (required) state [Req_State]
+    int32_t tel_hard_state;        // Power state [Tel_Hardware]
+    int32_t tel_mode;              // telescope mode [Tel_Mode]
+    int32_t az_mode;               // azimuth reverse [Az_Mode]
+    int32_t p2_state;              // P2 motor state [P2_State]
+    int32_t p2_req_mode;           // P2 required state [P2_Mode]
+    int32_t focus_state;           // focus motor state [Foc_State]
+    int32_t dome_state;            // dome motors state [Dome_State]
+    int32_t pcor_mode;             // pointing correction mode [Pos_Corr]
+    int32_t trkok_mode;            // tracking mode [TrkOk_Mode]
+    double i_alpha, i_delta;       // input values [InpAlpha, InpDelta]
+    double s_alpha, s_delta;       // source [SrcAlpha, SrcDelta]
+    double v_alpha, v_delta;       // intrinsic vel. [VelAlpha, VelDelta]
+    double i_azim, i_zdist;        // input A/Z [InpAzim, InpZdist]
+    double c_alpha, c_delta;       // calculated values [CurAlpha, CurDelta]
+    double tag_a, tag_z, tag_p;    // current values (from sensors) [tag_A, tag_Z, tag_P]
+    double pcor_a, pcor_z, refr_z; // calculated corrections [pos_cor_A, pos_cor_Z, refract_Z]
+    double tcor_a, tcor_z, tref_z; // reverse calculation corr. [tel_cor_A, tel_cor_Z, tel_ref_Z]
+    double diff_a, diff_z, diff_p; // coords difference [Diff_A, Diff_Z, Diff_P]
+    double vbasea,vbasez,vbasep;   // base object velocity [vel_objA, vel_objZ, vel_objP]
+    double diffva,diffvz,diffvp;   // correction by real speed [diff_vA, diff_vZ, diff_vP]
+    double speeda,speedz,speedp;   // motor speed [speedA, speedZ, speedP]
+    double m_time_precip;          // last precipitation time [Precip_time]
+    uint8_t reserve[16];           // reserved [Reserve]
+    double rspeeda, rspeedz, rspeedp; // real motor speed (''/sec) [req_speedA, req_speedZ, req_speedP]
+    double simvela, simvelz, simvelp, simvelf, simveld; // model speed [mod_vel_A, mod_vel_Z, mod_vel_P, mod_vel_F, mod_vel_D]
+    uint32_t kost;                 // telescope & hand correction state [code_KOST]
+    double m_time, s_time, l_time; // different time (UTC, stellar, local) [M_time, S_time, L_time]
+    uint32_t ppndd_a, ppndd_z, ppndd_p, ppndd_b; // PPNDD sensor (rough) code [ppndd_A, ppndd_Z, ppndd_P, ppndd_B (pressure)]
+    uint32_t dup_a, dup_z, dup_p, dup_f, dup_d;  // DUP sensor (precise) code (Gray code) [dup_A, dup_Z, dup_P, dup_F, dup_D]
+    uint32_t low_a, low_z, low_p, low_f, low_d;  // binary 14-digit precise code [low_A, low_Z, low_P, low_F, low_D]
+    uint32_t code_a, code_z, code_p, code_b, code_f, code_d; // binary 23-digit rough code [code_A, code_Z, code_P, code_B, code_F, code_D]
+    uint32_t adc[8];               // ADC PCL818 (8-channel) codes [ADC(N): code_T1, code_T2, code_T3, code_Wnd]
+    double val_a, val_z, val_p, val_b, val_f, val_d; // calculated values [val_A, val_Z, val_P, val_B, val_F, val_D]
+    double val_t1, val_t2, val_t3, val_wnd; // calculated values [val_T1, val_T2, val_T3, val_Wnd]
+    double val_alp, val_del;       // RA/Decl calculated by A/Z [val_Alp, val_Del]
+    double vel_a, vel_z, vel_p, vel_f, vel_d; // measured speed [vel_A, vel_Z, vel_P, vel_F, vel_D]
     // system messages queue
     struct SysMesg {
         int32_t seq_num;
         char type;                  // message type
         char text[MesgLen];         // message itself
-    } sys_msg_buf[MesgNum];
+    } sys_msg_buf[MesgNum]; // Sys_Mesg(N)
     // access levels
-    uint32_t code_lev[5];
+    uint32_t code_lev[5]; // [code_Lev(x): code_Lev1, code_Lev2, code_Lev3, code_Lev4, code_Lev5]
     // network settings
-    uint32_t netmask, netaddr, acsmask, acsaddr;
-    int32_t meteo_stat;            // meteo data
-    double inp_b, inp_t1, inp_t2, inp_t3, inp_wnd; // input meteo values
-    double temper, press;          // values used for refraction calculation
-    double m_time10, m_time15;     // last wind gust time
-    double dut1; // IERS DUT1  (src: ftp://maia.usno.navy.mil/ser7/ser7.dat), DUT1 = UT1-UTC
-    double a_time, z_time, p_time; // sensors reading time
-    double speedain, speedzin, speedpin; // input speeds
-    double acc_a, acc_z, acc_p, acc_f, acc_d; // acceleration (''/sec^2)
+    uint32_t netmask, netaddr, acsmask, acsaddr; // NetMask, NetWork, ACSMask, ACSNet]
+    int32_t meteo_stat;            // meteo data [MeteoMode]
+    double inp_b, inp_t1, inp_t2, inp_t3, inp_wnd; // input meteo values [inp_B, inp_T1, inp_T2, inp_T3, inp_Wnd]
+    double temper, press;          // values used for refraction calculation [Temper, Pressure]
+    double m_time10, m_time15;     // last wind gust time [Wnd10_time, Wnd15_time]
+    double dut1; // IERS DUT1  (src: ftp://maia.usno.navy.mil/ser7/ser7.dat), DUT1 = UT1-UTC [DUT1]
+    double a_time, z_time, p_time; // sensors reading time [A_time, Z_time, P_time]
+    double speedain, speedzin, speedpin; // input speeds [speedAin, speedZin, speedPin]
+    double acc_a, acc_z, acc_p, acc_f, acc_d; // acceleration (''/sec^2) [acc_A, acc_Z, acc_P, acc_F, acc_D]
     uint32_t code_sew;             // SEW code
     struct SEWdata {               // sew data
         int32_t status;
@@ -781,7 +775,6 @@ struct BTA_Data {
     double  jdate, eetime;             // current Julian date, sidereal time correction by "Equation of the Equinoxes"
     double val_hmd, inp_hmd;           // humidity value (%%) & hand input
     double worm_a, worm_z;             // worm position, mkm
-    /* флаги блокировки управления узлами */
     uint32_t lock_flags;               // locking flags
     int32_t sew_dome_speed;            // SEW dome divers speed: D_Lplus, D_Hminus etc
     int32_t sew_dome_num;              // SEW dome drive number (for indication)
@@ -804,9 +797,9 @@ extern volatile struct BTA_Data *sdt;
 
 // Local data structure
 struct BTA_Local {
-    uint8_t reserve[120];        // reserved data
-    double pr_oil_a,pr_oil_z,pr_oil_t; // Oil pressure
-    double t_oil_1,t_oil_2;            // Oil themperature
+    uint8_t reserve[120];               // reserved data
+    double pr_oil_a,pr_oil_z,pr_oil_t;  // Oil pressure
+    double t_oil_1,t_oil_2;             // Oil themperature
 };
 
 /**
@@ -846,6 +839,4 @@ void set_acckey(uint32_t newkey);
 
 // restore packing
 #pragma pack(pop)
-//#pragma GCC diagnostic pop
 
-#endif // __BTA_SHDATA_H__

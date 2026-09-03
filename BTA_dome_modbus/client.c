@@ -31,7 +31,7 @@
 
 
 #define NEW_HANDLER(name, unused)  \
-static const char* cmd_ ## name = STR(name);
+static const char* _U_ cmd_ ## name = STR(name);
 HANDLERS_LIST()
 #undef NEW_HANDLER
 
@@ -310,8 +310,10 @@ static int process_system(SSL *ssl){
 #ifdef EBUG
     //if(PEP_K_On != Ival.i) DBG("Set PEP_K_On to %d", !Ival.i);
 #endif
+    /*
     if(Ival.i) PEP_K_On = 0;
     else PEP_K_On = 1;
+    */
     static int modelused = FALSE;
     if(!G.emulmode){
         if(UseModel == FullModel){ // model

@@ -281,8 +281,8 @@ sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     double D;
     if(ISSETTER(value)){
         if(forbidden) return RESULT_FAIL;
-        if(!sl_str2d(&D, value) || !motors_set_speedsetpoint(D)) return RESULT_BADVAL;
-        return RESULT_OK;
+        if(!sl_str2d(&D, value)) return RESULT_BADVAL;
+        return motors_set_speedsetpoint(D);
     }
     snprintf(value,  SL_VAL_LEN-1, "%.3f", motors_get_speedsetpoint());
     return RESULT_SILENCE;
@@ -291,6 +291,11 @@ sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
 sl_sock_hresult_e stop_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     motors_stop();
     return RESULT_OK;
+}
+
+sl_sock_hresult_e nmotors_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    snprintf(value,  SL_VAL_LEN-1, "%d", motors_get_working_amount());
+    return RESULT_SILENCE;
 }
 
 // binary search handler by name

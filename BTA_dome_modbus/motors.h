@@ -18,6 +18,11 @@
 
 #pragma once
 
+#include <usefull_macros.h>
+
+// minimal amount of working motors to spin dome
+#define MIN_WORKING_MOTORS  4
+
 // max errors per motor to mean it OFF
 #define MAX_ERRORS      5
 
@@ -60,7 +65,7 @@ double motors_get_curntsetpoint();
 int motors_set_curntsetpoint(double);
 
 double motors_get_speedsetpoint();
-int motors_set_speedsetpoint(double);
+sl_sock_hresult_e motors_set_speedsetpoint(double);
 
 int motors_get_activenum();
 int motors_set_activenum(int);
@@ -69,6 +74,7 @@ void motors_stop();
 int motors_get_actcurrent(double*);
 int motors_get_actspeed(double*);
 int motors_get_actstatus(int*);
+int motors_get_working_amount();
 
 extern void (*motors_process)();
 
