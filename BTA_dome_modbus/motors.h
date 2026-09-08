@@ -21,7 +21,7 @@
 #include <usefull_macros.h>
 
 // minimal amount of working motors to spin dome
-#define MIN_WORKING_MOTORS  4
+#define MIN_WORKING_MOTORS  1
 
 // max errors per motor to mean it OFF
 #define MAX_ERRORS      5
@@ -38,6 +38,9 @@
 #define LSpeed          71
 #define MSpeed          350
 #define HSpeed          610
+
+// log-file prefix length
+#define MAX_LOGPREFIX_LEN   31
 
 // modbus responce timeout, ms
 #define MODBUS_RESPONCE_TIMEOUT 100000
@@ -82,3 +85,8 @@ extern int (*motors_open)(const char *, int);
 extern void (*motors_close)();
 
 void set_emulation_mode();
+
+void get_logfile_prefix(char buf[MAX_LOGPREFIX_LEN+1]);
+int set_logfile_prefix(char *value);
+int start_log();
+void stop_log();

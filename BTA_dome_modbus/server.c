@@ -298,6 +298,25 @@ sl_sock_hresult_e nmotors_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     return RESULT_SILENCE;
 }
 
+sl_sock_hresult_e logprefix_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    if(ISSETTER(value)){
+        // chkeck `value`:
+        if(set_logfile_prefix(value)) return RESULT_OK;
+        return RESULT_BADVAL;
+    } else get_logfile_prefix(value);
+    return RESULT_SILENCE;
+}
+
+sl_sock_hresult_e startlog_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    if(start_log()) return RESULT_OK;
+    return RESULT_FAIL;
+}
+
+sl_sock_hresult_e stoplog_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    stop_log();
+    return RESULT_OK;
+}
+
 // binary search handler by name
 static int search_handler(const char *name){
     int low = 0;

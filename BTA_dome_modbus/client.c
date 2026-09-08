@@ -214,6 +214,7 @@ static int check_motor(SSL *ssl, int motno){
         speed /= (double)N;
         current /= (double)N;
     }
+    DBG("found %d working motors, mean speed=%g, mean current=%g", N, speed, current);
     if(status == MOT_OFF && CommonState.status != MOT_OFF){
         *msg = MesgFault;
         sprintf(msg+1, "Dome: All motors are Off!\n");
@@ -337,13 +338,13 @@ static int process_system(SSL *ssl){
     }
     if(check_motor(ssl, curMotNo)){
         // TODO: check state for errors
-        if(++curMotNo == DomeSEW_N){ // set `struct SEWdata` parameters
+        if(curMotNo == indexSEWD){ // set `struct SEWdata` parameters
             motor_state_t *st = &MotorState[curMotNo];
             statusSEWD = st->status;
             vel_SEWD = st->speed;
             currentSEWD = st->current;
         }
-        if(curMotNo >= MOTORS_AMOUNT) curMotNo = 0;
+        if(++curMotNo >= MOTORS_AMOUNT) curMotNo = 0;
     }
     chk_dome_speed(ssl);
     return TRUE;
@@ -393,6 +394,9 @@ void clientproc(SSL_CTX *ctx, int fd){
         LOGERR("Can't get SHM block");
         ERRX("Can't get SHM block");
     }
+    // set amount of working motors
+    DomeSEW_N = MOTORS_AMOUNT;
+    DBG("set DomeSEW_N = %d", DomeSEW_N);
     while(isrunning){
         if(!process_system(ssl)){
             LOGERR("Motors error");

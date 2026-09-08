@@ -18,7 +18,10 @@
 
 #include <math.h>
 #include <modbus/modbus.h>
+#include <stdio.h>
+#include <string.h>
 
+#include "cmdlnopts.h"
 #include "motors.h"
 #include "esq770.h"
 
@@ -34,6 +37,12 @@ motcurrent=xx - (g) реальный ток
 speed=xx - (sg) уставка скорости
 current=xx - (sg) уставка тока
 #endif
+
+// log file (speed, current) prefix
+static char logprefix[MAX_LOGPREFIX_LEN + 1] = "motor";
+static FILE *logF[MOTORS_AMOUNT] = {NULL};
+static double Tstart = 0.;
+static pthread_mutex_t logmutex = PTHREAD_MUTEX_INITIALIZER;
 
 static modbus_t *modbus_ctx = NULL;
 static motor_state_t motstates[MOTORS_AMOUNT] = {0};
@@ -69,9 +78,10 @@ static void motors_close_m(){
         modbus_free(modbus_ctx);
         modbus_ctx = NULL;
     }
+    n_working_motors = 0;
 }
 static void motors_close_e(){ // stub for emulation mode
-    ;
+    n_working_motors = 0;
 }
 
 // open modbus @ given speed; return FALSE if failed
@@ -97,6 +107,8 @@ static int motors_open_m(const char *path, int speed){
     return TRUE;
 }
 static int motors_open_e(const char _U_ *path, int _U_ speed){ // stub for emulation mode
+    for(int i = 0; i < MOTORS_AMOUNT; ++i) motstates[i].status = MOT_SLEEP;
+    n_working_motors = MOTORS_AMOUNT;
     return TRUE;
 }
 
@@ -126,8 +138,14 @@ double motors_get_speedsetpoint(){
 // set setpoint of speed (rev/min)
 sl_sock_hresult_e motors_set_speedsetpoint(double val){
     double absval = fabs(val);
-    if(absval > MAX_SPEED) return RESULT_BADVAL;
-    if(n_working_motors < MIN_WORKING_MOTORS) return RESULT_FAIL;
+    if(absval > MAX_SPEED){
+        DBG("Speed to large");
+        return RESULT_BADVAL;
+    }
+    if(n_working_motors < MIN_WORKING_MOTORS){
+        DBG("n_working_motors = %d", n_working_motors);
+        return RESULT_FAIL;
+    }
     DBG("Change speed setpoint to %g", val);
     speedSet = val;
     flags.change_speed = 1;
@@ -168,6 +186,14 @@ static void count_motors(){
     for(int i = 0; i < MOTORS_AMOUNT; ++i){
         if(motstates[i].status != MOT_OFF) ++n_working_motors;
     }
+}
+
+static void log_data(int motno){
+    if(!logF[motno] ||  motstates[motno].status != MOT_RUN) return;
+    pthread_mutex_lock(&logmutex);
+    fprintf(logF[motno], "%.3f\t%.2f\t%.2f\n",
+            sl_dtime() - Tstart, motstates[motno].speed, motstates[motno].current);
+    pthread_mutex_unlock(&logmutex);
 }
 
 // main motors processing routine
@@ -245,7 +271,7 @@ static void motors_process_m(){
             DBG("status: ERROR");
             motstates[curN].status = MOT_ERROR;
     }
-    if(regs[1] & STATUS_READY_MASK){
+    if(!(regs[1] & STATUS_READY_MASK)){
         DBG("Motor not ready");
         motstates[curN].status = MOT_ERROR;
     }
@@ -257,6 +283,8 @@ static void motors_process_m(){
     if(-1 == modbus_read_registers(modbus_ctx, REG_OUTPUT_CURRENT, 1, &regs[1])) regs[1] = 0;
     motstates[curN].speed = FREQ2REVMIN(regs[0]);
     motstates[curN].current = ((double)regs[1]) / CURRENT_SCALE;
+    // Logging
+    log_data(curN);
     if(++curN >= MOTORS_AMOUNT){
         curN = 0;
         count_motors();
@@ -270,12 +298,6 @@ static void motors_process_e(){
     static double t0 = -1., curspeed = 0.;
     double curt = sl_dtime(), dt = curt - t0, curcurrent = 0.;
     int curstatus = motstates[0].status;
-    if(t0 < 0.){
-        t0 = curt;
-        // init state ("turn motors on")
-        for(int i = 0; i < MOTORS_AMOUNT; ++i) motstates[i].status = MOT_SLEEP;
-        return;
-    }
     if(flags.all){
         if(flags.stop){
             speedSet = 0.;
@@ -301,6 +323,7 @@ static void motors_process_e(){
     }
     t0 = curt;
     for(int i = 0; i < MOTORS_AMOUNT; ++i){
+        log_data(i);
         motstates[i].status = curstatus;
         motstates[i].current = curcurrent;
         motstates[i].speed = curspeed;
@@ -319,3 +342,44 @@ void set_emulation_mode(){
 }
 
 int motors_get_working_amount(){ return n_working_motors; }
+
+void get_logfile_prefix(char buf[MAX_LOGPREFIX_LEN+1]){ strcpy(buf, logprefix); }
+
+int set_logfile_prefix(char *value){
+    if(strlen(value) > MAX_LOGPREFIX_LEN) return FALSE;
+    char *ptr = value;
+    while(*ptr){
+        char c = *ptr;
+        if(c == '/' || c == '%' || c <= ' ' || c > 126) return FALSE;
+        ++ptr;
+    }
+    strcpy(logprefix, value);
+    return TRUE;
+}
+
+int start_log(){
+    char buf[PATH_MAX+1];
+    pthread_mutex_lock(&logmutex);
+    int errctr = 0;
+    for(int i = 0; i < MOTORS_AMOUNT; ++i){
+        if(logF[i]) fclose(logF[i]);
+        snprintf(buf, PATH_MAX, "%s/%s_%02d.log", G.motlogdir, logprefix, i);
+        logF[i] = fopen(buf, "a");
+        if(!logF[i]) ++errctr;
+    }
+    pthread_mutex_unlock(&logmutex);
+    Tstart = sl_dtime();
+    if(errctr == MOTORS_AMOUNT) return FALSE;
+    return TRUE;
+}
+
+void stop_log(){
+    pthread_mutex_lock(&logmutex);
+    for(int i = 0; i < MOTORS_AMOUNT; ++i){
+        if(logF[i]){
+            fclose(logF[i]);
+            logF[i] = NULL;
+        }
+    }
+    pthread_mutex_unlock(&logmutex);
+}

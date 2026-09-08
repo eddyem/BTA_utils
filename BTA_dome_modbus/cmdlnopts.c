@@ -50,6 +50,9 @@ glob_pars G = {
     .T_sync_lost = 5.,
     .speedchk_interval = 10.,
 #endif
+#ifdef SERVER
+    .motlogdir = "/tmp",
+#endif
 };
 
 /*
@@ -71,6 +74,7 @@ static sl_option_t cmdlnopts[] = {
     {"emulation",NO_ARGS,   NULL,   'e',    arg_int,    APTR(&G.emulmode),  _("run server in emulation mode")},
     {"serialdev",NEED_ARG,  NULL,   'd',    arg_string, APTR(&G.serialpath),_("path to RS-485 device")},
     {"serialspeed",NEED_ARG,NULL,   's',    arg_int,    APTR(&G.serialspeed),_("speed of serial device")},
+    {"mldir",   NEED_ARG,   NULL,   'D',    arg_string, APTR(&G.motlogdir), _("directory to store motor logs (default: /tmp)")},
 #endif
 #ifdef CLIENT
     {"mottmout",NEED_ARG,   NULL,   'M',    arg_double, APTR(&G.speedchk_interval), _("interval of motor's speed checking, s (default: 10)")},
