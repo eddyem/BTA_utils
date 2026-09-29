@@ -24,6 +24,7 @@
 #include "cmdlnopts.h"
 #include "motors.h"
 #include "esq770.h"
+#include "io.h"
 
 #if 0
 Протокол (s - сеттер, g - getteer):
@@ -73,6 +74,7 @@ static int motindex = 0;
 
 // close modbus connection
 static void motors_close_m(){
+    io_set_ctx(NULL); // do it before removing context
     if(modbus_ctx){
         modbus_close(modbus_ctx);
         modbus_free(modbus_ctx);
@@ -104,6 +106,7 @@ static int motors_open_m(const char *path, int speed){
         motors_close_m();
         return FALSE;
     }
+    io_set_ctx(modbus_ctx);
     return TRUE;
 }
 static int motors_open_e(const char _U_ *path, int _U_ speed){ // stub for emulation mode

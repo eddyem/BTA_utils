@@ -25,13 +25,18 @@
 
 // Handlers in this list MUST be in sortered order (by name)!!!
 #define HANDLERS_LIST() \
+NEW_HANDLER(adc, "read nth ADC channel") \
 NEW_HANDLER(forbidden, "forbid (1) or permit (0) dome operations") \
+NEW_HANDLER(inputs, "read PLC discrete inputs") \
 NEW_HANDLER(logprefix, "prefix of log file for nth motor (prefix_%d.log), max 31 chars") \
 NEW_HANDLER(motcurrent, "maximal motor current") \
 NEW_HANDLER(motnum, "active motor number for status requests") \
 NEW_HANDLER(motspeed, "motor speed") \
 NEW_HANDLER(motstatus, "motor status") \
 NEW_HANDLER(nmotors, "amount of working motors") \
+NEW_HANDLER(relayoff, "reset relay with given number") \
+NEW_HANDLER(relayon, "set relay with given number") \
+NEW_HANDLER(relayset, "set/reset relays by given mask") \
 NEW_HANDLER(speed, "speed setter") \
 NEW_HANDLER(startlog, "start logging") \
 NEW_HANDLER(stop, "stop motors") \

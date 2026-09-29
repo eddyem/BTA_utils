@@ -47,6 +47,7 @@ typedef struct{
     int serialspeed;        // speed of serial device
     char *serialpath;       // path to RS-485 device
     char *motlogdir;        // directory to store motor logs
+    int io_ID;              // ID of IO board (relays/inputs)
 #endif
 #ifdef CLIENT
     int terminal;           // run client in terminal mode

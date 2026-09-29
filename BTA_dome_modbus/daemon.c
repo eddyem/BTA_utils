@@ -84,13 +84,14 @@ int start_daemon(){
         OPENLOG(G.logfile, lvl, 1);
     }
     signal(SIGTERM, signals); // kill (-15) - quit
-    signal(SIGHUP, SIG_IGN);  // hup - ignore
+    //signal(SIGHUP, SIG_IGN);  // hup - ignore (used in sl_daemonize())
     signal(SIGINT, signals);  // ctrl+C - quit
     signal(SIGQUIT, signals); // ctrl+\ - quit
     signal(SIGTSTP, SIG_IGN); // ignore ctrl+Z
     LOGMSG("Started");
 #ifndef EBUG
     sl_check4running(NULL, G.pidfile);
+    sl_daemonize();
     int savelogs = TRUE;
     tstart = sl_dtime();
     while(1){

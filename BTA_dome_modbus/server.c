@@ -21,6 +21,7 @@
 #include "cmdlnopts.h"
 #include "daemon.h" // isrunning
 #include "handlers_list.h"
+#include "io.h"
 #include "motors.h"
 #include "server.h"
 
@@ -146,6 +147,7 @@ void serverproc(SSL_CTX *ctx, int fd){
     //int P = 0;
     while(isrunning){
         motors_process();
+        io_process();
         /*double tnow = sl_dtime();
         if(tnow - t0 > 5. && nfd > 1){ // broadcasting message
             //DBG("send ping");
@@ -217,7 +219,15 @@ void serverproc(SSL_CTX *ctx, int fd){
 }
 
 /****************** Protocol handlers (return 0 in case of success or error code >0 if failed) ******************/
-sl_sock_hresult_e forbidden_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e adc_handler(int _U_ index, char value[SL_VAL_LEN]){
+    int I; uint16_t val;
+    if(!ISSETTER(value) || !sl_str2i(&I, value)) return RESULT_BADVAL;
+    if(!io_read_adc(I, &val)) return RESULT_BADVAL;
+    snprintf(value,  SL_VAL_LEN-1, "%d", val);
+    return RESULT_SILENCE;
+}
+
+static sl_sock_hresult_e forbidden_handler(int _U_ index, char value[SL_VAL_LEN]){
     int I;
     if(ISSETTER(value)){
         if(!sl_str2i(&I, value)) return RESULT_BADVAL;
@@ -227,6 +237,66 @@ sl_sock_hresult_e forbidden_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     snprintf(value,  SL_VAL_LEN-1, "%d", forbidden);
     return RESULT_SILENCE;
 }
+
+static sl_sock_hresult_e inputs_handler(int _U_ index, char value[SL_VAL_LEN]){
+    if(ISSETTER(value)) return RESULT_BADVAL;
+    char inputs[NINPUTS], *ptr = value;
+    size_t restofline = SL_VAL_LEN - 1;
+    int triggered = io_read_inputs(inputs);
+    for(int i = 0; i < NINPUTS && restofline; ++i, ++ptr, --restofline){
+        if(inputs[i]) *ptr = '1';
+        else *ptr = '0';
+    }
+    if(restofline && triggered) *ptr++ = 'T';
+    *ptr = 0;
+    return RESULT_SILENCE;
+}
+
+// common getter for all relay commands
+static void read_relays(char value[SL_VAL_LEN]){
+    char relays[NRELAYS], *ptr = value;
+    size_t restofline = SL_VAL_LEN - 1;
+    io_read_relays(relays);
+    for(int i = 0; i < NRELAYS && restofline; ++i, ++ptr, --restofline){
+        if(relays[i]) *ptr = '1';
+        else *ptr = '0';
+    }
+    *ptr = 0;
+}
+
+static sl_sock_hresult_e relayon_handler(int _U_ index, char value[SL_VAL_LEN]){
+    if(!ISSETTER(value)){
+        read_relays(value);
+        return RESULT_SILENCE;
+    }
+    int I;
+    if(!sl_str2i(&I, value)) return RESULT_BADVAL;
+    if(!io_relay_on(I)) return RESULT_FAIL;
+    return RESULT_OK;
+}
+
+static sl_sock_hresult_e relayoff_handler(int _U_ index, char value[SL_VAL_LEN]){
+    if(!ISSETTER(value)){
+        read_relays(value);
+        return RESULT_SILENCE;
+    }
+    int I;
+    if(!sl_str2i(&I, value)) return RESULT_BADVAL;
+    if(!io_relay_off(I)) return RESULT_FAIL;
+    return RESULT_OK;
+}
+
+static sl_sock_hresult_e relayset_handler(int _U_ index, char value[SL_VAL_LEN]){
+    if(!ISSETTER(value)){
+        read_relays(value);
+        return RESULT_SILENCE;
+    }
+    int I;
+    if(!sl_str2i(&I, value)) return RESULT_BADVAL;
+    if(!io_set_relays(I)) return RESULT_FAIL;
+    return RESULT_OK;
+}
+
 // key - keyword (command name), value - i/o buffer (value[0]==0 for getters)
 /*
 sl_sock_hresult_e current_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
@@ -239,7 +309,7 @@ sl_sock_hresult_e current_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     return RESULT_SILENCE;
 }*/
 
-sl_sock_hresult_e motcurrent_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e motcurrent_handler(int _U_ index, char value[SL_VAL_LEN]){
     if(ISSETTER(value)) return RESULT_BADVAL; // only getter
     double D;
     if(!motors_get_actcurrent(&D)) return RESULT_FAIL;
@@ -247,7 +317,7 @@ sl_sock_hresult_e motcurrent_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     return RESULT_SILENCE;
 }
 
-sl_sock_hresult_e motnum_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e motnum_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     int I;
     if(ISSETTER(value)){
         if(!sl_str2i(&I, value) || !motors_set_activenum(I)) return RESULT_BADVAL;
@@ -257,7 +327,7 @@ sl_sock_hresult_e motnum_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     return RESULT_SILENCE;
 }
 
-sl_sock_hresult_e motspeed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e motspeed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     if(ISSETTER(value)) return RESULT_BADVAL; // only getter
     double D;
     if(!motors_get_actspeed(&D)) return RESULT_FAIL;
@@ -265,7 +335,7 @@ sl_sock_hresult_e motspeed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     return RESULT_SILENCE;
 }
 
-sl_sock_hresult_e motstatus_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e motstatus_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     if(ISSETTER(value)) return RESULT_BADVAL; // only getter
     int I;
     if(!motors_get_actstatus(&I)) return RESULT_FAIL;
@@ -277,7 +347,7 @@ sl_sock_hresult_e relay_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     return RESULT_SILENCE;
 }*/
 
-sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     double D;
     if(ISSETTER(value)){
         if(forbidden) return RESULT_FAIL;
@@ -288,17 +358,17 @@ sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     return RESULT_SILENCE;
 }
 
-sl_sock_hresult_e stop_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e stop_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     motors_stop();
     return RESULT_OK;
 }
 
-sl_sock_hresult_e nmotors_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e nmotors_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     snprintf(value,  SL_VAL_LEN-1, "%d", motors_get_working_amount());
     return RESULT_SILENCE;
 }
 
-sl_sock_hresult_e logprefix_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e logprefix_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     if(ISSETTER(value)){
         // chkeck `value`:
         if(set_logfile_prefix(value)) return RESULT_OK;
@@ -307,12 +377,12 @@ sl_sock_hresult_e logprefix_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     return RESULT_SILENCE;
 }
 
-sl_sock_hresult_e startlog_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e startlog_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     if(start_log()) return RESULT_OK;
     return RESULT_FAIL;
 }
 
-sl_sock_hresult_e stoplog_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e stoplog_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     stop_log();
     return RESULT_OK;
 }
