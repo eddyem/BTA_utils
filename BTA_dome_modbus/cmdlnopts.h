@@ -43,6 +43,7 @@ typedef struct{
     char *port;             // port number
     int verbose;            // logfile verbose level
     char *ca;               // ca
+    char *conffile;         // configuration file
 #ifdef SERVER
     int serialspeed;        // speed of serial device
     char *serialpath;       // path to RS-485 device

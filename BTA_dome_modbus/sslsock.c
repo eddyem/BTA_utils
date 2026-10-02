@@ -26,6 +26,7 @@
 #include "cmdlnopts.h"
 #include "sslsock.h"
 #ifdef SERVER
+#include "io.h"
 #include "motors.h"
 #include "server.h"
 #else
@@ -43,7 +44,7 @@ static int OpenConn(int port){
     // allow reuse of descriptor
     if(setsockopt(sd, SOL_SOCKET,  SO_REUSEADDR, (void *)&enable, sizeof(int)) < 0){
         LOGERR("Can't apply SO_REUSEADDR to socket");
-        ERRX("setsockopt()");
+        ERR("setsockopt()");
     }
     struct sockaddr_in addr = {0};
     addr.sin_family = AF_INET;
@@ -51,11 +52,11 @@ static int OpenConn(int port){
     addr.sin_addr.s_addr = INADDR_ANY;
     if(bind(sd, (struct sockaddr*)&addr, sizeof(addr))){
         LOGWARN("Can't bind port %d", port);
-        ERRX("bind()");
+        ERR("bind()");
     }
     if(listen(sd, BACKLOG)){
         LOGWARN("Can't listen()");
-        ERRX("listen()");
+        ERR("listen()");
     }
     return sd;
 }
@@ -67,7 +68,7 @@ static int OpenConn(int port){
     struct sockaddr_in addr;
     if((host = gethostbyname(G.serverhost)) == NULL ){
         LOGWARN("gethostbyname(%s) error", G.serverhost);
-        ERRX("gethostbyname()");
+        ERR("gethostbyname()");
     }
     sd = socket(PF_INET, SOCK_STREAM, 0);
     DBG("sd=%d", sd);
@@ -78,7 +79,7 @@ static int OpenConn(int port){
     if(connect(sd, (struct sockaddr*)&addr, sizeof(addr))){
         close(sd);
         LOGWARN("Can't connect to %s", G.serverhost);
-        ERRX("connect()");
+        ERR("connect()");
     }
     return sd;
 }
@@ -144,6 +145,11 @@ int open_socket(){
         WARNX("Can't open %s @%d", G.serialpath, G.serialspeed);
         return 1;
     }
+    DBG("Motors opened: Stop them");
+    motors_stop();
+    DBG("Inhibit");
+    io_set_relays(0); // turn off all relays
+    io_relay_on(RELAY_BLOCK_MOTORS); // turn on locking relay
     serverproc(ctx, fd);
 #else
     if(G.terminal) terminal(ctx, fd);

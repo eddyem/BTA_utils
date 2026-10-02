@@ -29,6 +29,7 @@
  * here are global parameters initialisation
  */
 static int help;
+static char *conffile = NULL;
 
 #ifdef SERVER
 #define DEFCERT     "server_cert.pem"
@@ -68,9 +69,10 @@ static sl_option_t cmdlnopts[] = {
     {"certificate",NEED_ARG,NULL,   'c',    arg_string, APTR(&G.cert),      _("path to SSL sertificate (default: " DEFCERT ")")},
     {"key",     NEED_ARG,   NULL,   'k',    arg_string, APTR(&G.key),       _("path to SSL key (default: " DEFKEY ")")},
     {"port",    NEED_ARG,   NULL,   'p',    arg_string, APTR(&G.port),      _("port to open (default: " DEFAULT_PORT ")")},
-    {"verbose", NO_ARGS,    NULL,   'v',    arg_none,   APTR(&G.verbose),   _("increase log verbose level (default: LOG_WARN)")},
+    {"verbose", OPT_ARG,    NULL,   'v',    arg_int,    APTR(&G.verbose),   _("increase log verbose level (default: WARN; -v - MSG, -v2 - DBG, -v3 - ANY)")},
     {"ca",      NEED_ARG,   NULL,   'a',    arg_string, APTR(&G.ca),        _("path to SSL ca - base cert (default:" DEFCA ")")},
     {"timeout", NEED_ARG,   NULL,   't',    arg_double, APTR(&G.acc_timeout),_("network timeout, s (default: 1)")},
+    {"conffile",NEED_ARG,   NULL,   'C',    arg_string, APTR(&conffile),    _("configuration file (config have advantage over cmdline)")},
 #ifdef SERVER
     {"emulation",NO_ARGS,   NULL,   'e',    arg_int,    APTR(&G.emulmode),  _("run server in emulation mode")},
     {"serialdev",NEED_ARG,  NULL,   'd',    arg_string, APTR(&G.serialpath),_("path to RS-485 device")},
@@ -104,10 +106,18 @@ void parse_args(int argc, char **argv){
     // parse arguments
     sl_parseargs(&argc, &argv, cmdlnopts);
     if(help) sl_showhelp(-1, cmdlnopts);
+    DBG("Verbose = %d", G.verbose);
     if(argc > 0){
         red("Ignored options:\n");
         for (i = 0; i < argc; i++)
             printf("\t%s\n", argv[i]);
     }
+    if(conffile){
+        if(!sl_conf_readopts(conffile, cmdlnopts)){
+            sl_conf_showhelp(-1, cmdlnopts);
+            exit(1);
+        }
+    }
+    DBG("Verbose = %d", G.verbose);
 }
 

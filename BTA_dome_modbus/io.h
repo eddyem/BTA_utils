@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <modbus/modbus.h>
 
 #define NRELAYS     16
@@ -26,13 +27,30 @@
 // ADC level threshold: 50 units
 #define ADCTHRESH   50
 
+// INPUTS:
+#define INP_FLOOR1          0x0001
+#define INP_FLOOR2          0x0002
+#define INP_DOOR_OPENED     0x0004
+#define INP_OPEN_DOOR       0x0008
+#define INP_TEL_AT_NEST     0x0010
+//#define INP_
+
+// RELAYS:
+#define RELAY_OPEN_DOOR     1
+#define RELAY_BLOCK_DOOR    2
+#define RELAY_LIGHT         3
+#define RELAY_POWER         4
+#define RELAY_BLOCK_MOTORS  5
+#define RELAY_DOOR_UNLOCKED 10
+//#define RELAY_
+
 void io_set_ctx(modbus_t *ctx);
 void io_process();
 
-int io_read_inputs(char inputs[NINPUTS]);
+void io_read_inputs(uint32_t *state);
 int io_read_adc(int nch, uint16_t *val);
-void io_read_relays(char relays[NRELAYS]);
+void io_read_relays(uint32_t *state);
 
 int io_relay_on(int N);
 int io_relay_off(int N);
-int io_set_relays(int N);
+void io_set_relays(uint32_t flags);

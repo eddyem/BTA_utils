@@ -8,6 +8,8 @@ daemon.c
 daemon.h
 esq770.h
 handlers_list.h
+io.c
+io.h
 main.c
 motors.c
 motors.h

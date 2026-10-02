@@ -78,7 +78,6 @@ int start_daemon(){
 #endif
     if(G.logfile){
         int lvl = LOGLEVEL_WARN + G.verbose;
-        DBG("level = %d", lvl);
         if(lvl > LOGLEVEL_ANY) lvl = LOGLEVEL_ANY;
         green("Log file %s @ level %d\n", G.logfile, lvl);
         OPENLOG(G.logfile, lvl, 1);

@@ -28,9 +28,6 @@
 // handlers: `index` - command index in list, `value` - setter's value or getter's answer
 typedef sl_sock_hresult_e (*handler_t)(int index, char value[SL_VAL_LEN]);
 
-// == TRUE if dome management is forbidden
-static int forbidden = FALSE;
-
 // struct for setters/getters
 typedef struct{
     const char *command;
@@ -231,37 +228,29 @@ static sl_sock_hresult_e forbidden_handler(int _U_ index, char value[SL_VAL_LEN]
     int I;
     if(ISSETTER(value)){
         if(!sl_str2i(&I, value)) return RESULT_BADVAL;
-        forbidden = I;
+        if(I) io_relay_on(RELAY_BLOCK_MOTORS);
+        else io_relay_off(RELAY_BLOCK_MOTORS);
         return RESULT_OK;
     }
-    snprintf(value,  SL_VAL_LEN-1, "%d", forbidden);
+    uint32_t relays;
+    io_read_relays(&relays);
+    snprintf(value,  SL_VAL_LEN-1, "%s", (relays & 1 << RELAY_BLOCK_MOTORS) ? "1" : "0");
     return RESULT_SILENCE;
 }
 
 static sl_sock_hresult_e inputs_handler(int _U_ index, char value[SL_VAL_LEN]){
     if(ISSETTER(value)) return RESULT_BADVAL;
-    char inputs[NINPUTS], *ptr = value;
-    size_t restofline = SL_VAL_LEN - 1;
-    int triggered = io_read_inputs(inputs);
-    for(int i = 0; i < NINPUTS && restofline; ++i, ++ptr, --restofline){
-        if(inputs[i]) *ptr = '1';
-        else *ptr = '0';
-    }
-    if(restofline && triggered) *ptr++ = 'T';
-    *ptr = 0;
+    uint32_t Istate;
+    io_read_inputs(&Istate);
+    snprintf(value, SL_VAL_LEN, "%" PRIu32, Istate);
     return RESULT_SILENCE;
 }
 
 // common getter for all relay commands
 static void read_relays(char value[SL_VAL_LEN]){
-    char relays[NRELAYS], *ptr = value;
-    size_t restofline = SL_VAL_LEN - 1;
-    io_read_relays(relays);
-    for(int i = 0; i < NRELAYS && restofline; ++i, ++ptr, --restofline){
-        if(relays[i]) *ptr = '1';
-        else *ptr = '0';
-    }
-    *ptr = 0;
+    uint32_t Rstate;
+    io_read_relays(&Rstate);
+    snprintf(value, SL_VAL_LEN, "%" PRIu32, Rstate);
 }
 
 static sl_sock_hresult_e relayon_handler(int _U_ index, char value[SL_VAL_LEN]){
@@ -293,7 +282,7 @@ static sl_sock_hresult_e relayset_handler(int _U_ index, char value[SL_VAL_LEN])
     }
     int I;
     if(!sl_str2i(&I, value)) return RESULT_BADVAL;
-    if(!io_set_relays(I)) return RESULT_FAIL;
+    io_set_relays((uint32_t)I);
     return RESULT_OK;
 }
 
@@ -350,7 +339,6 @@ sl_sock_hresult_e relay_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
 static sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
     double D;
     if(ISSETTER(value)){
-        if(forbidden) return RESULT_FAIL;
         if(!sl_str2d(&D, value)) return RESULT_BADVAL;
         return motors_set_speedsetpoint(D);
     }
