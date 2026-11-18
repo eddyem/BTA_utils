@@ -42,3 +42,4 @@
 
 int open_socket();
 int read_string(SSL *ssl, char *buf, int l);
+int write_string(SSL *ssl, char *buf);

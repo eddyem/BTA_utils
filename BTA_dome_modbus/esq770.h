@@ -35,14 +35,14 @@
 #define REG_OUTPUT_CURRENT      0xA204  // 41476 (current * 10)
 #define REG_MOTOR_SPEED         0xA205  // 41477 (speed, depends on settings)
 
-// REG_CMD bits
+// REG_CMD codes
 #define CMD_FORWARD             1
 #define CMD_REVERSE             2
 #define CMD_STOP                5
 #define CMD_FAST_STOP           6
 #define CMD_RESET_FAULT         7
 
-// REG_STATUS_MAIN bits
+// REG_STATUS_MAIN codes
 #define STATUS_CW               1
 #define STATUS_CCW              2
 #define STATUS_STOP             3
@@ -54,7 +54,7 @@
 
 // convert rev/min to frequency register value and back
 // 100 * revmin / 60 * 4; 100 - scale, 60 - min2sec, 4 - pole amount
-#define REVMIN2FREQ(r)          (uint16_t)((100. * (r)) / 15.)
+#define REVMIN2FREQ(r)          (uint16_t)((100. * (fabs(r))) / 15.)
 #define FREQ2REVMIN(f)          ((((double)(f)) * 15.) / 100.)
 #define CURRENT_SCALE           10.
 

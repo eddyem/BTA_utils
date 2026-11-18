@@ -2,7 +2,7 @@
 CLIENT := dome_client
 SERVER := dome_server
 LDFLAGS += -fdata-sections -ffunction-sections -Wl,--gc-sections -Wl,--discard-all
-LDFLAGS += -lusefull_macros -lssl -lcrypto
+LDFLAGS += -pthread -lusefull_macros -lssl -lcrypto
 DEFINES := $(DEF) -D_GNU_SOURCE -D_XOPEN_SOURCE=1111
 SOBJDIR := mkserver
 COBJDIR := mkclient
@@ -18,7 +18,7 @@ CC = gcc
 
 TARGFILE := build.target
 
-ifeq ($(shell test -e $(TARGFILE) && echo -n yes),yes)
+ifeq ($(shell test -e $(TARGFILE) && printf yes),yes)
 	TARGET := $(file < $(TARGFILE))
 else
 	TARGET := RELEASE
@@ -30,6 +30,7 @@ endif
 
 release: CFLAGS += -flto
 release: LDFLAGS += -flto
+release: TARGET := RELEASE
 release: $(TARGFILE) $(CLIENT) $(SERVER)
 
 debug: CFLAGS += -DEBUG -Werror
@@ -41,16 +42,17 @@ $(TARGFILE):
 	@echo "$(TARGET)" > $(TARGFILE)
 
 $(CLIENT) : DEFINES += -DCLIENT
+$(CLIENT) : LDFLAGS += -lcrypt
 $(CLIENT) : $(COBJDIR) $(COBJS)
 	@echo -e "\tLD $(CLIENT)"
-	$(CC) $(LDFLAGS) $(COBJS) -o $(CLIENT)
+	$(CC) $(COBJS) -o $(CLIENT) $(LDFLAGS)
 
 
 $(SERVER) : DEFINES += -DSERVER
 $(SERVER) : LDFLAGS += -lmodbus
 $(SERVER) : $(SOBJDIR) $(SOBJS)
 	@echo -e "\tLD $(SERVER)"
-	$(CC) $(LDFLAGS) $(SOBJS) -o $(SERVER)
+	$(CC) $(SOBJS) -o $(SERVER) $(LDFLAGS)
 
 $(SOBJDIR):
 	@mkdir $(SOBJDIR)
@@ -65,17 +67,17 @@ endif
 
 $(COBJDIR)/%.o: %.c 
 	@echo -e "\tCC $<"
-	$(CC) -MP -MMD -c $(LDFLAGS) $(CFLAGS) $(DEFINES) -o $@ $<
+	$(CC) -MP -MMD -c $(CFLAGS) $(DEFINES) -o $@ $<
 
 $(SOBJDIR)/%.o: %.c 
 	@echo -e "\t\tCC $<"
-	$(CC) -MP -MMD -c $(LDFLAGS) $(CFLAGS) $(DEFINES) -o $@ $<
+	$(CC) -MP -MMD -c $(CFLAGS) $(DEFINES) -o $@ $<
 
 clean:
 	@echo -e "\t\tCLEAN"
 	@rm -rf $(SOBJDIR) $(COBJDIR) $(TARGFILE) 2>/dev/null || true
 
 xclean: clean
-	@rm -f $(PROGRAM)
+	@rm -f $(CLIENT) $(SERVER)
 
-.PHONY: clean xclean
+.PHONY: clean xclean $(TARGFILE)

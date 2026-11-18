@@ -216,16 +216,18 @@ void set_cmd_src(uint32_t ip, int pid) {
     cmd_src_ip = ip;
 }
 
-#pragma pack(push, 4)
 /**
  * Send client commands to server
  */
 void send_cmd(int cmd_code, char *buf, int size) {
     struct my_msgbuf mbuf;
     if(snd_id < 0) return;
-    if(size > 100) size = 100;
+    if(size > 100){
+        size = 100;
+        buf[99] = 0;
+    }
     if(cmd_code > 0)
-        mbuf.mtype = cmd_code;
+        mbuf.mtype = (int32_t)cmd_code;
     else
         return;
     if(ucmd.id == snd_id)      mbuf.acckey = ucmd.acckey;
@@ -242,6 +244,7 @@ void send_cmd(int cmd_code, char *buf, int size) {
         mbuf.mtext[0] = 0;
         size = 1;
     }
+    // in case of error the message would be lost!
     msgsnd(snd_id, (struct msgbuf *)&mbuf, size+12, IPC_NOWAIT);
 }
 
@@ -317,21 +320,22 @@ void send_cmd_i3d1(int cmd_code, int32_t arg1, int32_t arg2, int32_t arg3, doubl
 
 void encode_lev_passwd(char *passwd, int nlev, uint32_t *keylev, uint32_t *codlev){
     char salt[4];
-    char *encr;
     union {
         uint32_t ui;
         char c[4];
     } key, cod;
+    struct crypt_data data[1] = {0};
     sprintf(salt,"L%1d",nlev);
-    encr = (char *)crypt(passwd, salt);
-    cod.c[0] = encr[2];
-    key.c[0] = encr[3];
-    cod.c[1] = encr[4];
-    key.c[1] = encr[5];
-    cod.c[2] = encr[6];
-    key.c[2] = encr[7];
-    cod.c[3] = encr[8];
-    key.c[3] = encr[9];
+    // normally we must check what crypt_r returns!
+    crypt_r(passwd, salt, data);
+    cod.c[0] = data->output[2];
+    key.c[0] = data->output[3];
+    cod.c[1] = data->output[4];
+    key.c[1] = data->output[5];
+    cod.c[2] = data->output[6];
+    key.c[2] = data->output[7];
+    cod.c[3] = data->output[8];
+    key.c[3] = data->output[9];
     *keylev = key.ui;
     *codlev = cod.ui;
 }

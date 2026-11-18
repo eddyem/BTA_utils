@@ -16,8 +16,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <limits.h>
 #include <math.h>
 #include <modbus/modbus.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -49,6 +51,9 @@ static modbus_t *modbus_ctx = NULL;
 static motor_state_t motstates[MOTORS_AMOUNT] = {0};
 // amount of working motors
 static int n_working_motors = 0;
+
+// mutex for flags, currentSet, speedSet, n_working_motors and motstates
+static pthread_mutex_t statemutex = PTHREAD_MUTEX_INITIALIZER;
 
 // set points
 static double currentSet = DEFAULT_CURRENT, speedSet = 0.;
@@ -110,15 +115,19 @@ static int motors_open_m(const char *path, int speed){
     return TRUE;
 }
 static int motors_open_e(const char _U_ *path, int _U_ speed){ // stub for emulation mode
+    pthread_mutex_lock(&statemutex);
     for(int i = 0; i < MOTORS_AMOUNT; ++i) motstates[i].status = MOT_SLEEP;
     n_working_motors = MOTORS_AMOUNT;
+    pthread_mutex_unlock(&statemutex);
     return TRUE;
 }
 
 
 // stop all
 void motors_stop(){
+    pthread_mutex_lock(&statemutex);
     flags.stop = 1;
+    pthread_mutex_unlock(&statemutex);
 }
 
 // current setpoint getter
@@ -129,8 +138,10 @@ double motors_get_curntsetpoint(){
 int motors_set_curntsetpoint(double val){
     if(val < 0. || val > MAX_CURRENT) return FALSE;
     DBG("Change max current to %g", val);
+    pthread_mutex_lock(&statemutex);
     currentSet = val;
     flags.change_current = 1;
+    pthread_mutex_unlock(&statemutex);
     return TRUE;
 }
 
@@ -145,13 +156,16 @@ sl_sock_hresult_e motors_set_speedsetpoint(double val){
         DBG("Speed to large");
         return RESULT_BADVAL;
     }
+    pthread_mutex_lock(&statemutex);
     if(n_working_motors < MIN_WORKING_MOTORS){
         DBG("n_working_motors = %d", n_working_motors);
+        pthread_mutex_unlock(&statemutex);
         return RESULT_FAIL;
     }
     DBG("Change speed setpoint to %g", val);
     speedSet = val;
     flags.change_speed = 1;
+    pthread_mutex_unlock(&statemutex);
     return RESULT_OK;
 }
 
@@ -167,23 +181,35 @@ int motors_set_activenum(int N){
 
 // get current value for active motor
 int motors_get_actcurrent(double *val){
-    if(val) *val = motstates[motindex].current;
+    if(val){
+        pthread_mutex_lock(&statemutex);
+        *val = motstates[motindex].current;
+        pthread_mutex_unlock(&statemutex);
+    }
     return TRUE;
 }
 
 // get speed for active motor
 int motors_get_actspeed(double *val){
-    if(val) *val = motstates[motindex].speed;
+    if(val){
+        pthread_mutex_lock(&statemutex);
+        *val = motstates[motindex].speed;
+        pthread_mutex_unlock(&statemutex);
+    }
     return TRUE;
 }
 
 // get status for active motor
 int motors_get_actstatus(int *val){
-    if(val) *val = motstates[motindex].status;
+    if(val){
+        pthread_mutex_lock(&statemutex);
+        *val = motstates[motindex].status;
+        pthread_mutex_unlock(&statemutex);
+    }
     return TRUE;
 }
 
-// count amount of actual motors
+// count amount of actual motors; called under locked statemutex
 static void count_motors(){
     n_working_motors = 0;
     for(int i = 0; i < MOTORS_AMOUNT; ++i){
@@ -191,11 +217,13 @@ static void count_motors(){
     }
 }
 
+// should be run under locked statemutex
 static void log_data(int motno){
-    if(!logF[motno] ||  motstates[motno].status != MOT_RUN) return;
     pthread_mutex_lock(&logmutex);
+    if(!logF[motno] ||  motstates[motno].status != MOT_RUN) goto retn;
     fprintf(logF[motno], "%.3f\t%.2f\t%.2f\n",
             sl_dtime() - Tstart, motstates[motno].speed, motstates[motno].current);
+retn:
     pthread_mutex_unlock(&logmutex);
 }
 
@@ -207,6 +235,7 @@ static void motors_process_m(){
         LOGERR("Modbus not inited or other error! Error counter = %d", errctr);
         ERRX("Modbus not inited or other error!");
     }
+    pthread_mutex_lock(&statemutex);
     if(flags.all){
         if(-1 == modbus_set_slave(modbus_ctx, 0)){
             WARN("Can't set broadcast slave");
@@ -215,7 +244,7 @@ static void motors_process_m(){
         if(flags.stop){
             DBG("User asks to stop");
             speedSet = 0.;
-            // send command stop (don't check return code for broadcast messages!
+            // send command stop (don't check return code for broadcast messages!)
             modbus_write_register(modbus_ctx, REG_CMD, CMD_STOP);
             flags.stop = 0;
         }
@@ -226,11 +255,14 @@ static void motors_process_m(){
         }
         if(flags.change_speed){
             DBG("User asks to change speed to %g", speedSet);
-            // send command "set speed"
-            uint16_t dir = (speedSet > 0.) ? CMD_FORWARD : CMD_REVERSE;
-            uint16_t freq = REVMIN2FREQ(fabs(speedSet));
-            modbus_write_register(modbus_ctx, REG_CMD, dir);
-            modbus_write_register(modbus_ctx, REG_FREQ_SET, freq);
+            if(fabs(speedSet) < SPEED_TOLERANCE){ // stop motor
+                modbus_write_register(modbus_ctx, REG_CMD, CMD_STOP);
+            }else{ // send command "set speed"
+                uint16_t dir = (speedSet > 0.) ? CMD_FORWARD : CMD_REVERSE;
+                uint16_t freq = REVMIN2FREQ(fabs(speedSet));
+                modbus_write_register(modbus_ctx, REG_CMD, dir);
+                modbus_write_register(modbus_ctx, REG_FREQ_SET, freq);
+            }
             flags.change_speed = 0;
         }
     }
@@ -256,6 +288,7 @@ static void motors_process_m(){
             curN = 0;
             count_motors();
         }
+        pthread_mutex_unlock(&statemutex);
         return;
     }
     DBG("motor %d; status: %x, extstatus: %x", curN, regs[0], regs[1]);
@@ -293,13 +326,18 @@ static void motors_process_m(){
         count_motors();
     }
     errctr = 0;
+    pthread_mutex_unlock(&statemutex);
     return;
 reg_error:
+    pthread_mutex_unlock(&statemutex);
     ++errctr;
 }
 static void motors_process_e(){
     static double t0 = -1., curspeed = 0.;
-    double curt = sl_dtime(), dt = curt - t0, curcurrent = 0.;
+    double curt = sl_dtime();
+    if(t0 < 0.) t0 = curt;
+    double dt = curt - t0, curcurrent = 0.;
+    pthread_mutex_lock(&statemutex);
     int curstatus = motstates[0].status;
     if(flags.all){
         if(flags.stop){
@@ -331,17 +369,21 @@ static void motors_process_e(){
         motstates[i].current = curcurrent;
         motstates[i].speed = curspeed;
     }
+    pthread_mutex_unlock(&statemutex);
 }
 
 int (*motors_open)(const char *, int) = motors_open_m;
 void (*motors_close)() = motors_close_m;
 void (*motors_process)() = motors_process_m;
 
+// Run only @ start of main()
 void set_emulation_mode(){
     LOGMSG("Set emulation mode");
+    pthread_mutex_lock(&statemutex);
     motors_open =  motors_open_e;
     motors_close = motors_close_e;
     motors_process = motors_process_e;
+    pthread_mutex_unlock(&statemutex);
 }
 
 int motors_get_working_amount(){ return n_working_motors; }

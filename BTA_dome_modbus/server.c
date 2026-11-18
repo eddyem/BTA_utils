@@ -16,6 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <inttypes.h>
 #include <usefull_macros.h>
 
 #include "cmdlnopts.h"
@@ -35,8 +36,8 @@ typedef struct{
     const char *helpstring;
 } command_t;
 
-static const char *maxcl = "Max client number reached, connect later\n";
-static const char *sslerr = "SSL error occured\n";
+static const char maxcl[] = "Max client number reached, connect later\n";
+static const char sslerr[] = "SSL error occured\n";
 
 // declaration of handlers
 #define NEW_HANDLER(name, unused)  \
@@ -70,9 +71,8 @@ static int handle_connection(SSL *ssl){
     char buf[IOBUF_LEN], key[SL_KEY_LEN], val[SL_VAL_LEN];
     int r = read_string(ssl, buf, IOBUF_LEN);
     if(r < 0) return 0;
-    int sd = SSL_get_fd(ssl);
-    //DBG("Client %d msg: \"%s\"\n", sd, buf);
-    LOGDBG("fd=%d, message=%s", sd, buf);
+    else if(r == 0) return 1; // nothing to read or buffer overflow
+    LOGDBG("fd=%d, message=%s", SSL_get_fd(ssl), buf);
     int got = sl_get_keyval(buf, key, val);
     if(got == 0){
         DBG("Comment or empty string");
@@ -93,7 +93,7 @@ static int handle_connection(SSL *ssl){
         if(0 == strcmp(key, "help")){
             for(size_t i = 0; i < HANDLERS_AMOUNT; ++i){
                 snprintf(buf,  IOBUF_LEN-1, "%s: %s\n", command_list[i].command, command_list[i].helpstring);
-                SSL_write(ssl, buf, strlen(buf));
+                write_string(ssl, buf);
             }
             return 1;
         }
@@ -101,7 +101,7 @@ static int handle_connection(SSL *ssl){
     // now `val` is an answer or error code
     if(result != RESULT_SILENCE) snprintf(buf, IOBUF_LEN-1, "%s\n", sl_sock_hresult2str(result));
     else snprintf(buf, IOBUF_LEN-1, "%s=%s\n", key, val);
-    SSL_write(ssl, buf, strlen(buf));
+    write_string(ssl, buf);
     return 1;
 }
 
@@ -120,8 +120,9 @@ static int timeouted_sslaccept(SSL *ssl){
                 SSL_ERROR_WANT_WRITE == sslerr) continue;
             DBG("SSL error %d", sslerr);
             return FALSE;
-        }
-        else return TRUE;
+        }else if(x == 1) return TRUE;
+        // x == 0 -> unclosed connection
+        usleep(10000);
     }
     DBG("Timeout");
     return FALSE;
@@ -152,7 +153,7 @@ void serverproc(SSL_CTX *ctx, int fd){
             int l = strlen(buf);
             for(int i = nfd-1; i > 0; --i){
                 //DBG("To fd[%d]=%d", i, poll_set[i].fd);
-                SSL_write(ssls[i], buf, l);
+                write_string(ssls[i], buf);
             }
             t0 = tnow;
         }*/
@@ -162,6 +163,7 @@ void serverproc(SSL_CTX *ctx, int fd){
             struct sockaddr_in addr;
             socklen_t len = sizeof(addr);
             int client = accept4(fd, (struct sockaddr*)&addr, &len, SOCK_NONBLOCK); // non-blocking for timeout of SSL_accept
+            if(client < 0) continue; // accept4() error
             DBG("Connection: %s @ %d (fd=%d)\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), client);
             LOGMSG("Client %s connected to port %d (fd=%d)", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), client);
             if(nfd == BACKLOG + 1){
@@ -186,6 +188,7 @@ void serverproc(SSL_CTX *ctx, int fd){
                 }else{
                     LOGERR("SSL_accept()");
                     WARNX("SSL_accept()");
+                    SSL_shutdown(ssl);
                     SSL_free(ssl);
                     send(client, sslerr, sizeof(sslerr)-1, MSG_NOSIGNAL);
                     shutdown(client, SHUT_WR);
@@ -199,7 +202,9 @@ void serverproc(SSL_CTX *ctx, int fd){
             if((poll_set[fdidx].revents & POLLIN) == 0) continue;
             int fd = poll_set[fdidx].fd;
             if(!handle_connection(ssls[fdidx])){ // socket closed
+                SSL_shutdown(ssls[fdidx]);
                 SSL_free(ssls[fdidx]);
+                ERR_clear_error();
                 DBG("Client fd=%d disconnected", fd);
                 LOGMSG("Client fd=%d disconnected", fd);
                 close(fd);
@@ -210,7 +215,10 @@ void serverproc(SSL_CTX *ctx, int fd){
             }
         }
     }
-    for(int i = 0; i < nfd; ++i) SSL_free(ssls[i]);
+    for(int i = 1; i < nfd; ++i){
+        SSL_shutdown(ssls[i]);
+        SSL_free(ssls[i]);
+    }
     motors_stop();
     motors_close();
 }
@@ -218,6 +226,7 @@ void serverproc(SSL_CTX *ctx, int fd){
 /****************** Protocol handlers (return 0 in case of success or error code >0 if failed) ******************/
 static sl_sock_hresult_e adc_handler(int _U_ index, char value[SL_VAL_LEN]){
     int I; uint16_t val;
+    // have setter format: adc=x for reading x channel
     if(!ISSETTER(value) || !sl_str2i(&I, value)) return RESULT_BADVAL;
     if(!io_read_adc(I, &val)) return RESULT_BADVAL;
     snprintf(value,  SL_VAL_LEN-1, "%d", val);
@@ -347,11 +356,13 @@ static sl_sock_hresult_e speed_handler(int _U_ index, char _U_ value[SL_VAL_LEN]
 }
 
 static sl_sock_hresult_e stop_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    if(ISSETTER(value)) return RESULT_BADVAL; // not setter
     motors_stop();
     return RESULT_OK;
 }
 
-static sl_sock_hresult_e nmotors_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+static sl_sock_hresult_e nmotors_handler(int _U_ index, char value[SL_VAL_LEN]){
+    if(ISSETTER(value)) return RESULT_BADVAL; // only getter
     snprintf(value,  SL_VAL_LEN-1, "%d", motors_get_working_amount());
     return RESULT_SILENCE;
 }
@@ -366,11 +377,13 @@ static sl_sock_hresult_e logprefix_handler(int _U_ index, char _U_ value[SL_VAL_
 }
 
 static sl_sock_hresult_e startlog_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    if(ISSETTER(value)) return RESULT_BADVAL; // not setter
     if(start_log()) return RESULT_OK;
     return RESULT_FAIL;
 }
 
 static sl_sock_hresult_e stoplog_handler(int _U_ index, char _U_ value[SL_VAL_LEN]){
+    if(ISSETTER(value)) return RESULT_BADVAL; // not setter
     stop_log();
     return RESULT_OK;
 }
@@ -379,10 +392,14 @@ static sl_sock_hresult_e stoplog_handler(int _U_ index, char _U_ value[SL_VAL_LE
 static int search_handler(const char *name){
     int low = 0;
     int high = HANDLERS_AMOUNT - 1;
+#ifdef EBUG
     int iter = 0;
+#endif
 
     while(low <= high){
+#ifdef EBUG
         ++iter;
+#endif
         int mid = low + (high - low) / 2;
         // Compare the target string with the struct's string field
         int res = strcmp(name, command_list[mid].command);

@@ -55,12 +55,12 @@ typedef struct{
     arg_type_t type;
 } value_t;
 
-// setter: when setspeed command sent successfully
-static double set_speed = 0.;
 // common state - by last motor polled
 static motor_state_t CommonState = {0};
 // state of each motor
 static motor_state_t MotorState[MOTORS_AMOUNT] = {0};
+// new speed setter
+static double set_speed = 0.;
 
 static int SSL_nbread(SSL *ssl, char *buf, int bufsz){
     struct pollfd fds = {0};
@@ -72,7 +72,8 @@ static int SSL_nbread(SSL *ssl, char *buf, int bufsz){
         WARNX("poll()");
         return 0;
     }
-    if(fds.revents == POLLIN){
+    if(fds.revents & POLLHUP) return -1; // closed
+    if(fds.revents & POLLIN){
         //        DBG("Got info in fd #%d", fd);
         int l = read_string(ssl, buf, bufsz);
         //        DBG("read %d bytes", l);
@@ -101,9 +102,10 @@ static sl_sock_hresult_e send_motor_command(SSL *ssl, const char *cmd, value_t *
             l = snprintf(buf, IOBUF_LEN-1, "%s=%g\n", cmd, setter->d);
         }
     }else l = snprintf(buf, IOBUF_LEN-1, "%s\n", cmd);
+    if(l < 0 || l >= IOBUF_LEN) return RESULT_FAIL; // snprintf error or overflow
     buf[l] = 0;
     //DBG("Send to server: %s", buf);
-    SSL_write(ssl, buf, l);
+    if(!write_string(ssl, buf)) return RESULT_FAIL;
     double t0 = sl_dtime();
     while(sl_dtime() - t0 < G.acc_timeout){
         l = SSL_nbread(ssl, buf, IOBUF_LEN-1);
@@ -170,6 +172,25 @@ static void stop_all(SSL *ssl){
         ++ntries;
         usleep(100000);
     }
+    if(ntries >= 5){
+        LOGERR("Can't run emergency motor's stopping!");
+    }else{
+        Dome_Speed = D_Off;
+        set_speed = 0.;
+    }
+}
+
+static int chkm(SSL *ssl, int motno){
+    value_t Ival = {.type = ARG_TYPE_INT, .i = motno};
+    value_t Dval = {.type = ARG_TYPE_DOUBLE};
+    if(RESULT_OK != send_motor_command(ssl, cmd_motnum, &Ival, NULL)) return -1;
+    if(RESULT_OK != send_motor_command(ssl, cmd_motstatus, NULL, &Ival)) return -1;
+    MotorState[motno].status = (int) Ival.i;
+    if(RESULT_OK != send_motor_command(ssl, cmd_motspeed, NULL, &Dval)) return 0;
+    MotorState[motno].speed = Dval.d;
+    if(RESULT_OK != send_motor_command(ssl, cmd_motcurrent, NULL, &Dval)) return 0;
+    MotorState[motno].current = Dval.d;
+    return 1;
 }
 
 /**
@@ -181,17 +202,13 @@ static void stop_all(SSL *ssl){
 static int check_motor(SSL *ssl, int motno){
     char msg[128];
     if(!ssl || motno < 0 || motno >= MOTORS_AMOUNT) return FALSE;
-    value_t Ival = {.type = ARG_TYPE_INT, .i = motno};
-    value_t Dval = {.type = ARG_TYPE_DOUBLE};
-    if(RESULT_OK != send_motor_command(ssl, cmd_motnum, &Ival, NULL)) return FALSE;
-    if(RESULT_OK != send_motor_command(ssl, cmd_motstatus, NULL, &Ival)) return FALSE;
-    MotorState[motno].status = (int) Ival.i;
-    if(RESULT_OK != send_motor_command(ssl, cmd_motspeed, NULL, &Dval)) return FALSE;
-    MotorState[motno].speed = Dval.d;
-    if(RESULT_OK != send_motor_command(ssl, cmd_motcurrent, NULL, &Dval)) return FALSE;
-    MotorState[motno].current = Dval.d;
+    int ret = chkm(ssl, motno);
+    if(ret < 0){
+        ret = FALSE;
+        MotorState[motno].status = MOT_ERROR; // no answer -> error
+    }
     // now set common state as mean of all
-    if(motno != MOTORS_AMOUNT - 1) return TRUE;
+    if(motno != MOTORS_AMOUNT - 1) return ret;
     int status = 0, N = 0; // mean status is largest
     double speed = 0., current = 0.;
     for(int i = 0; i < MOTORS_AMOUNT; ++i){
@@ -199,12 +216,12 @@ static int check_motor(SSL *ssl, int motno){
         if(s == MOT_OFF) continue;
         if(s == MOT_ERROR){
             *msg = MesgWarn;
-            printf(msg+1, "Dome: Error in motor %d!\n", i+1);
+            sprintf(msg+1, "Dome: Error in motor %d!\n", i+1);
             SendMessage(msg);
-            MotorState[i].status = MOT_OFF;
+            s = MotorState[i].status = MOT_OFF;
         }
         if(status < s) status = s;
-        if(status == MOT_RUN){
+        if(s == MOT_RUN){
             speed += MotorState[i].speed;
             current += MotorState[i].current;
             ++N;
@@ -227,7 +244,7 @@ static int check_motor(SSL *ssl, int motno){
     CommonState.status = status;
     CommonState.speed = speed;
     CommonState.current = current;
-    return TRUE;
+    return ret;
 }
 
 // check for speed change and send given command to server
@@ -242,8 +259,8 @@ static void chk_dome_speed(SSL *ssl){
     if(new_state == old_state){
         if(sl_dtime() - tlast < G.speedchk_interval) return;
         DBG("Time - tlast = %g", sl_dtime() - tlast);
-        if(CommonState.speed == set_speed){
-            tlast = sl_dtime();
+        tlast = sl_dtime();
+        if(fabs(CommonState.speed - fabs(set_speed)) < SPEED_TOLERANCE){
             return;
         }
         DBG("Speed set command still not sent");
@@ -275,7 +292,8 @@ static void chk_dome_speed(SSL *ssl){
     value_t Dval = {.type = ARG_TYPE_DOUBLE, .d = new_speed};
     if(RESULT_OK == send_motor_command(ssl, cmd_speed, &Dval, NULL)){
         DBG("New speed %g sent", new_speed);
-        if(RESULT_OK == send_motor_command(ssl, cmd_speed, NULL, &Dval) && fabs(Dval.d - new_speed) <= FLT_EPSILON){
+        // check that server receives right new speed
+        if(RESULT_OK == send_motor_command(ssl, cmd_speed, NULL, &Dval) && fabs(Dval.d - new_speed) <= SPEED_TOLERANCE){
             DBG("Got answer with speed set: %g", Dval.d);
             old_state = new_state; // all OK, command in work
             set_speed = new_speed;
@@ -287,27 +305,22 @@ static void chk_dome_speed(SSL *ssl){
 
 // SHM parser; return FALSE if SHM is in erroreous state
 static int process_system(SSL *ssl){
-    static double t0 = 0., last_mtime = 0.;
     static int curMotNo = 0; // current motor number (we'll scan all 10 motors by one)
     double curtime = sl_dtime();
-    if(t0 < 1.){ // first run
-        t0 = curtime;
-        last_mtime = M_time;
-        return TRUE;
-    }
     // check time sync
     static int brokenshmctr = 0;
-    if(M_time - last_mtime > curtime - t0 + G.T_sync_lost || !check_shm_block(&sdat)){ // broken SHM
+    if(curtime - M_time > G.T_sync_lost || !check_shm_block(&sdat)){ // broken SHM
         if(brokenshmctr == 0){
             LOGERR("Stalled or broken SHM block");
         }
-        WARNX("Stalled or broken SHM block; %g -- %g", M_time - last_mtime + G.T_sync_lost, curtime - t0);
+        WARNX("Stalled or broken SHM block; (M_time - curtime) = %g", M_time - curtime);
         if(++brokenshmctr < 10) return TRUE;
         return FALSE;
     }else brokenshmctr = 0;
+#if 0
     // set/reset PEP_K_On by information from server!
     value_t Ival = {.type = ARG_TYPE_INT, .i = 0};
-    if(RESULT_OK != send_motor_command(ssl, cmd_forbidden, &Ival, NULL)) return FALSE;
+    if(RESULT_OK != send_motor_command(ssl, cmd_forbidden, NULL, &Ival)) return FALSE;
 #ifdef EBUG
     //if(PEP_K_On != Ival.i) DBG("Set PEP_K_On to %d", !Ival.i);
 #endif
@@ -315,6 +328,7 @@ static int process_system(SSL *ssl){
     if(Ival.i) PEP_K_On = 0;
     else PEP_K_On = 1;
     */
+#endif
     static int modelused = FALSE;
     if(!G.emulmode){
         if(UseModel == FullModel){ // model
@@ -326,6 +340,8 @@ static int process_system(SSL *ssl){
             return TRUE;
         }else modelused = FALSE;
         static int serverisdead = FALSE;
+        // !!! carefully: when running not by root, kill can return -1 wiwth EPERM !!!
+        // (in this case this is normal: only root can run client)
         if(ServPID <= 0 || kill(ServPID, 0) < 0){ // dead server
             WARNX("Main server is dead");
             if(!serverisdead){
@@ -344,8 +360,8 @@ static int process_system(SSL *ssl){
             vel_SEWD = st->speed;
             currentSEWD = st->current;
         }
-        if(++curMotNo >= MOTORS_AMOUNT) curMotNo = 0;
     }
+    if(++curMotNo >= MOTORS_AMOUNT) curMotNo = 0;
     chk_dome_speed(ssl);
     return TRUE;
 }
@@ -370,7 +386,7 @@ static SSL *openConn(SSL_CTX *ctx, int fd){
     SSL *ssl = SSL_new(ctx);
     SSL_set_fd(ssl, fd);
     int c = SSL_connect(ssl);
-    if(c < 0){
+    if(c != 1){
         LOGERR("SSL_connect()");
         ERRX("SSL_connect() error: %d", SSL_get_error(ssl, c));
     }
@@ -394,6 +410,9 @@ void clientproc(SSL_CTX *ctx, int fd){
         LOGERR("Can't get SHM block");
         ERRX("Can't get SHM block");
     }
+    get_cmd_queue(&mcmd, ClientSide);
+    get_cmd_queue(&ocmd, ClientSide);
+    get_cmd_queue(&ucmd, ClientSide);
     // set amount of working motors
     DomeSEW_N = MOTORS_AMOUNT;
     DBG("set DomeSEW_N = %d", DomeSEW_N);
@@ -401,21 +420,19 @@ void clientproc(SSL_CTX *ctx, int fd){
         if(!process_system(ssl)){
             LOGERR("Motors error");
             WARNX("ERROR!");
-            stop_all(ssl);
-            sleep(5);
             break;
         }
         // clear receiving buffer (TODO: parse it?)
         int bytes = SSL_nbread(ssl, buf, sizeof(buf)-1);
         if(bytes > 0){
             buf[bytes] = 0;
-            fprintf(stderr, "Received: \"%s\"\n", buf);
+            LOGDBG("Received: \"%s\"", buf);
         }else if(bytes < 0){
-            LOGWARN("Server disconnected or other error");
-            ERRX("Disconnected");
+            LOGERR("Server disconnected or other error");
         }
         usleep(100000);
     }
+    if(ssl) stop_all(ssl);
     DBG("Exit; isrunning=%d", isrunning);
     SSL_free(ssl);
 }
@@ -436,9 +453,10 @@ void terminal(SSL_CTX *ctx, int fd){
         }
         if(sl_canread(0)){
             ssize_t L = getline(&lptr, &N, stdin);
+            if(L < 0) break; // ctrl + D
             if(L > (ssize_t)(sizeof(buf)-1)) WARNX("String too long!");
             else if(L > 0){
-                SSL_write(ssl, lptr, L);
+                if(!write_string(ssl, lptr)) break; // error
             }
         }
         int bytes = 0;
@@ -454,5 +472,6 @@ void terminal(SSL_CTX *ctx, int fd){
             printed = FALSE;
         }
     }
+    FREE(lptr);
     SSL_free(ssl);
 }

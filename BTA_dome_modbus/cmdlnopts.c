@@ -98,9 +98,8 @@ static sl_option_t cmdlnopts[] = {
  */
 void parse_args(int argc, char **argv){
     int i;
-    size_t hlen = 1024;
-    char helpstring[1024], *hptr = helpstring;
-    snprintf(hptr, hlen, "Usage: %%s [args]\n\n\tWhere args are:\n");
+    char helpstring[1024];
+    snprintf(helpstring, 1023, "Usage: %%s [args]\n\n\tWhere args are:\n");
     // format of help: "Usage: progname [args]\n"
     sl_helpstring(helpstring);
     // parse arguments

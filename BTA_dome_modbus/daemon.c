@@ -83,7 +83,7 @@ int start_daemon(){
         OPENLOG(G.logfile, lvl, 1);
     }
     signal(SIGTERM, signals); // kill (-15) - quit
-    //signal(SIGHUP, SIG_IGN);  // hup - ignore (used in sl_daemonize())
+    signal(SIGPIPE, SIG_IGN); // don't fall on SSL_write() error
     signal(SIGINT, signals);  // ctrl+C - quit
     signal(SIGQUIT, signals); // ctrl+\ - quit
     signal(SIGTSTP, SIG_IGN); // ignore ctrl+Z
@@ -95,6 +95,12 @@ int start_daemon(){
     tstart = sl_dtime();
     while(1){
         childpid = fork();
+        if(childpid == -1){
+            WARN("fork()");
+            LOGERR("daemon(): fork() error");
+            sleep(5);
+            continue;
+        }
         if(childpid){ // master
             if(savelogs) LOGMSG("Created child with pid %d", childpid);
             wait(NULL);

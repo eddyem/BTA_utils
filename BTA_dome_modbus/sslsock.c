@@ -21,6 +21,7 @@
 #include <signal.h>     // pthread_kill
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <usefull_macros.h>
 
 #include "cmdlnopts.h"
@@ -75,7 +76,8 @@ static int OpenConn(int port){
     bzero(&addr, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = *(long*)(host->h_addr);
+    //addr.sin_addr.s_addr = *(long*)(host->h_addr);
+    memcpy(&addr.sin_addr, host->h_addr, host->h_length);
     if(connect(sd, (struct sockaddr*)&addr, sizeof(addr))){
         close(sd);
         LOGWARN("Can't connect to %s", G.serverhost);
@@ -88,8 +90,8 @@ static int OpenConn(int port){
 static SSL_CTX* InitCTX(void){
     const SSL_METHOD *method;
     SSL_CTX *ctx;
-    OpenSSL_add_all_algorithms();
-    SSL_load_error_strings();
+    //OpenSSL_add_all_algorithms();
+    //SSL_load_error_strings();
     method =
 #ifdef CLIENT
       TLS_client_method();
@@ -101,27 +103,39 @@ static SSL_CTX* InitCTX(void){
         LOGWARN("Can't create SSL context");
         ERRX("SSL_CTX_new()");
     }
+    if(!SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION)){
+        LOGWARN("Can't set minimum TLS protocol version");
+        ERRX("SSL_CTX_set_min_proto_version()");
+    }
     if(SSL_CTX_load_verify_locations(ctx, G.ca, NULL) != 1){
         LOGWARN("Could not set the CA file location\n");
         ERRX("Could not set the CA file location\n");
     }
 #ifdef SERVER
-
-    SSL_CTX_set_client_CA_list(ctx, SSL_load_client_CA_file(G.ca));
+    STACK_OF(X509_NAME) *cert_names = SSL_load_client_CA_file(G.ca);
+    if(!cert_names){
+        LOGWARN("Could not load client CA file %s", G.ca);
+        ERRX("SSL_load_client_CA_file()");
+    }
+    SSL_CTX_set_client_CA_list(ctx, cert_names);
 #endif
     if(SSL_CTX_use_certificate_file(ctx, G.cert, SSL_FILETYPE_PEM) <= 0){
+        ERR_print_errors_fp(stderr);
         LOGWARN("Can't use SSL certificate %s", G.cert);
         ERRX("Can't use SSL certificate %s", G.cert);
     }
     if(SSL_CTX_use_PrivateKey_file(ctx, G.key, SSL_FILETYPE_PEM) <= 0){
+        ERR_print_errors_fp(stderr);
         LOGWARN("Can't use SSL key %s", G.key);
         ERRX("Can't use SSL key %s", G.key);
     }
     if(!SSL_CTX_check_private_key(ctx)){
+        ERR_print_errors_fp(stderr);
         LOGWARN("Private key does not match the public certificate\n");
         ERRX("Private key does not match the public certificate\n");
     }
-    SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
+    // don't need as socket would be non-blocking
+    // SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
 #ifdef SERVER
     SSL_CTX_set_verify(ctx, // Specify that we need to verify the client as well
        SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
@@ -129,7 +143,7 @@ static SSL_CTX* InitCTX(void){
 #else
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
 #endif
-    SSL_CTX_set_verify_depth(ctx, 1); // We accept only certificates signed only by the CA himself
+    SSL_CTX_set_verify_depth(ctx, 1); // We accept only certificates signed by the CA himself
     return ctx;
 }
 
@@ -143,6 +157,8 @@ int open_socket(){
     if(!motors_open(G.serialpath, G.serialspeed)){
         LOGERR("Can't open %s @%d", G.serialpath, G.serialspeed);
         WARNX("Can't open %s @%d", G.serialpath, G.serialspeed);
+        close(fd);
+        SSL_CTX_free(ctx);
         return 1;
     }
     DBG("Motors opened: Stop them");
@@ -155,7 +171,6 @@ int open_socket(){
     if(G.terminal) terminal(ctx, fd);
     else clientproc(ctx, fd);
 #endif
-    // newer reached
     close(fd);
     SSL_CTX_free(ctx);
     return 0;
@@ -186,7 +201,7 @@ int read_string(SSL *ssl, char *buf, int l){
     if(bytes < 1){ // nothing to read or error
         return geterrcode(ssl, bytes);
     }
-    char *eol = strchr(buf, '\n');
+    char *eol = memchr(buf, '\n', bytes);
     if(!eol){ // not found: overflow or no enough symbols
         if(bytes == l){ // oops: overflow, thow it out
             SSL_read(ssl, buf, l);
@@ -201,4 +216,30 @@ int read_string(SSL *ssl, char *buf, int l){
     }
     buf[bytes-1] = 0; // replace '\n' with 0
     return bytes;
+}
+
+/**
+ * @brief write_string - write '\n'-terminated string
+ * @param ssl - SSL
+ * @param buf - zero-terminated buffer with text (last symbol should be '\n')
+ * @return FALSE in case of fail or timeout (1s)
+ */
+int write_string(SSL *ssl, char *buf){
+    double t0 = sl_dtime();
+    int l = strlen(buf);
+    while(sl_dtime() - t0 < 1. && l > 0){
+        int written = SSL_write(ssl, buf, l);
+        if(written <= 0){
+            int err = SSL_get_error(ssl, written);
+            if(err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE){ // try next time
+                continue;
+            }
+            return FALSE; // error
+        }
+        buf += written;
+        l -= written;
+        if(l) usleep(10000);
+    }
+    if(l > 0) return FALSE;
+    return TRUE;
 }

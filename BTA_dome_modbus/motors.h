@@ -29,6 +29,7 @@
 // freq_scale == 100, so for UINT16_t we can't make speed more than 655.35
 #define MAX_SPEED       655.
 #define SPEED_TOLERANCE 0.01
+
 // emulation acceleration, min^-2
 #define EMUL_ACCEL      10000.
 #define MAX_CURRENT     15.

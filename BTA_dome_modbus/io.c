@@ -19,6 +19,8 @@
 #include <modbus/modbus.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <usefull_macros.h>
 
@@ -74,10 +76,10 @@ static int change_relay(int N, int state){
     return ret;
 }
 
-//#define RON(relayNo)   do{if((RelaysState & (1<<relayNo)) == 0) change_relay(relayNo, 1);}while(0)
-//#define ROFF(relayNo)  do{if((RelaysState & (1<<relayNo))) change_relay(relayNo, 0);}while(0)
-#define RON(relayNo)   do{change_relay(relayNo, 1);}while(0)
-#define ROFF(relayNo)  do{change_relay(relayNo, 0);}while(0)
+#define RON(relayNo)   do{if((RelaysState & (1<<relayNo)) == 0) change_relay(relayNo, 1);}while(0)
+#define ROFF(relayNo)  do{if((RelaysState & (1<<relayNo))) change_relay(relayNo, 0);}while(0)
+//#define RON(relayNo)   do{change_relay(relayNo, 1);}while(0)
+//#define ROFF(relayNo)  do{change_relay(relayNo, 0);}while(0)
 
 // check inputs and set/reset relays according to them
 static void chk_inputs(){
@@ -145,6 +147,9 @@ static void chk_relays(){
     }
     pthread_mutex_unlock(&sync_mutex);
 }
+
+#undef RON
+#undef ROFF
 
 // process reading relays & inputs state
 void io_process(){
