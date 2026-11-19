@@ -181,6 +181,8 @@ static int geterrcode(SSL *ssl, int errcode){
     DBG("ERR: %d", sslerr);
     if(SSL_ERROR_WANT_READ == sslerr ||
         SSL_ERROR_WANT_WRITE == sslerr) return 0; // empty call
+    // don't log "zero return" when client disconnected
+    if(sslerr == SSL_ERROR_ZERO_RETURN) return -1;
     int sd = SSL_get_fd(ssl);
     LOGERR("SSL error %d @client %d", sslerr, sd);
     WARNX("SSL error %d @client %d", sslerr, sd);
@@ -209,13 +211,20 @@ int read_string(SSL *ssl, char *buf, int l){
         return 0;
     }
     l = eol - buf + 1;
-    bytes = SSL_read(ssl, buf, l);
-    //DBG("Read: %d", bytes);
-    if(bytes < 1){ // error
-        return geterrcode(ssl, bytes);
+    char *ptr = buf;
+    int total = 0;
+    while(l){
+        bytes = SSL_read(ssl, ptr, l);
+        //DBG("Read: %d", bytes);
+        if(bytes <= 0){ // error
+            return geterrcode(ssl, bytes);
+        }
+        l -= bytes;
+        ptr += bytes;
+        total += bytes;
     }
-    buf[bytes-1] = 0; // replace '\n' with 0
-    return bytes;
+    ptr[-1] = 0; // replace '\n' with 0
+    return total;
 }
 
 /**
@@ -227,11 +236,12 @@ int read_string(SSL *ssl, char *buf, int l){
 int write_string(SSL *ssl, char *buf){
     double t0 = sl_dtime();
     int l = strlen(buf);
-    while(sl_dtime() - t0 < 1. && l > 0){
+    while(sl_dtime() - t0 < G.acc_timeout && l > 0){
         int written = SSL_write(ssl, buf, l);
         if(written <= 0){
             int err = SSL_get_error(ssl, written);
             if(err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE){ // try next time
+                usleep(10000);
                 continue;
             }
             return FALSE; // error

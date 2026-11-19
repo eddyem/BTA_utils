@@ -210,7 +210,7 @@ void io_process(){
     }
 #ifdef EBUG
     for(int i = 0; i < NADCCHNLS; ++i){
-        if(abs(adcbuf[i] - ADCBuf[i]) < ADCTHRESH) continue;
+        if(abs((int)adcbuf[i] - (int)ADCBuf[i]) < ADCTHRESH) continue;
         // GotNewADC = TRUE; break;
 
         printf("ADC input %d changed to %d\n", i, adcbuf[i]);

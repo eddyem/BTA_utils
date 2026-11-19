@@ -33,7 +33,7 @@ release: LDFLAGS += -flto
 release: TARGET := RELEASE
 release: $(TARGFILE) $(CLIENT) $(SERVER)
 
-debug: CFLAGS += -DEBUG -Werror
+debug: CFLAGS += -DEBUG -Werror -g
 debug: TARGET := DEBUG
 debug: $(TARGFILE) $(CLIENT) $(SERVER)
 

@@ -125,7 +125,7 @@ treated as “nothing yet”.
 
 ## 6. Protocol
 
-Text, one message per line, `\n` terminator.
+Text, one message per line, `\n` terminator. It is unacceptable to end a message with `\r\n`.
 
 ### 6.1 Message forms
 
@@ -449,7 +449,7 @@ the option tables are compiled conditionally.
 | `SPEED_TOLERANCE` | 0.01 | rev/min |
 | `MAX_CURRENT` / `DEFAULT_CURRENT` | 15 / 10 | A |
 | `LSpeed` / `MSpeed` / `HSpeed` | 71 / 350 / 610 | rev/min presets |
-| `MODBUS_RESPONCE_TIMEOUT` | 100000 | µs |
+| `MODBUS_RESPONSE_TIMEOUT` | 100000 | µs |
 | `EMUL_ACCEL` | 10000 | min⁻² |
 | `BACKLOG` | 10 | max simultaneous SSL clients |
 | `IOBUF_LEN` / `SL_VAL_LEN` / `SL_KEY_LEN` | 256 / (external) | protocol buffer sizes |

@@ -72,7 +72,7 @@ static int handle_connection(SSL *ssl){
     int r = read_string(ssl, buf, IOBUF_LEN);
     if(r < 0) return 0;
     else if(r == 0) return 1; // nothing to read or buffer overflow
-    LOGDBG("fd=%d, message=%s", SSL_get_fd(ssl), buf);
+    LOGDBG("fd=%d, message: '%s'", SSL_get_fd(ssl), buf);
     int got = sl_get_keyval(buf, key, val);
     if(got == 0){
         DBG("Comment or empty string");
@@ -93,7 +93,7 @@ static int handle_connection(SSL *ssl){
         if(0 == strcmp(key, "help")){
             for(size_t i = 0; i < HANDLERS_AMOUNT; ++i){
                 snprintf(buf,  IOBUF_LEN-1, "%s: %s\n", command_list[i].command, command_list[i].helpstring);
-                write_string(ssl, buf);
+                if(!write_string(ssl, buf)) return 0;
             }
             return 1;
         }
@@ -101,7 +101,7 @@ static int handle_connection(SSL *ssl){
     // now `val` is an answer or error code
     if(result != RESULT_SILENCE) snprintf(buf, IOBUF_LEN-1, "%s\n", sl_sock_hresult2str(result));
     else snprintf(buf, IOBUF_LEN-1, "%s=%s\n", key, val);
-    write_string(ssl, buf);
+    if(!write_string(ssl, buf)) return 0;
     return 1;
 }
 
@@ -117,12 +117,14 @@ static int timeouted_sslaccept(SSL *ssl){
         if(x < 0){
             int sslerr = SSL_get_error(ssl, x);
             if(SSL_ERROR_WANT_READ == sslerr ||
-                SSL_ERROR_WANT_WRITE == sslerr) continue;
+                SSL_ERROR_WANT_WRITE == sslerr){
+                usleep(10000);
+                continue;
+            }
             DBG("SSL error %d", sslerr);
             return FALSE;
         }else if(x == 1) return TRUE;
-        // x == 0 -> unclosed connection
-        usleep(10000);
+        else return FALSE; // x == 0 -> unclosed connection
     }
     DBG("Timeout");
     return FALSE;
@@ -197,6 +199,12 @@ void serverproc(SSL_CTX *ctx, int fd){
                 }
             }
         }
+        if(nfd == 1){ // no clients -> stop dome
+            if(fabs(motors_get_speedsetpoint()) > SPEED_TOLERANCE){ // stop motors if speed setpoint > 0 when nobody connected
+                LOGERR("Stop motors: no clients connected!");
+                motors_stop();
+            }
+        }
         // scan connections
         for(int fdidx = 1; fdidx < nfd; ++fdidx){
             if((poll_set[fdidx].revents & POLLIN) == 0) continue;
@@ -219,7 +227,8 @@ void serverproc(SSL_CTX *ctx, int fd){
         SSL_shutdown(ssls[i]);
         SSL_free(ssls[i]);
     }
-    motors_stop();
+    motors_stop(); // set stop flag
+    motors_process(); // send stop command
     motors_close();
 }
 

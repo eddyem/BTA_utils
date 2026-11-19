@@ -18,6 +18,9 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <math.h>
+
 // Registers and their fields for ESQ-770 frequency converter
 
 // command register (rw)

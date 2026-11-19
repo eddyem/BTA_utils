@@ -177,6 +177,7 @@ static void stop_all(SSL *ssl){
     }else{
         Dome_Speed = D_Off;
         set_speed = 0.;
+        speedSEWD = 0.;
     }
 }
 
@@ -211,15 +212,19 @@ static int check_motor(SSL *ssl, int motno){
     if(motno != MOTORS_AMOUNT - 1) return ret;
     int status = 0, N = 0; // mean status is largest
     double speed = 0., current = 0.;
+    static int warnsent[MOTORS_AMOUNT] = {0}; // flag that error warning for this motor was sent
     for(int i = 0; i < MOTORS_AMOUNT; ++i){
         int s = MotorState[i].status;
         if(s == MOT_OFF) continue;
         if(s == MOT_ERROR){
-            *msg = MesgWarn;
-            sprintf(msg+1, "Dome: Error in motor %d!\n", i+1);
-            SendMessage(msg);
+            if(!warnsent[i]){
+                *msg = MesgWarn;
+                sprintf(msg+1, "Dome: Error in motor %d!\n", i+1);
+                SendMessage(msg);
+                warnsent[i] = 1;
+            }
             s = MotorState[i].status = MOT_OFF;
-        }
+        }else warnsent[i] = 0;
         if(status < s) status = s;
         if(s == MOT_RUN){
             speed += MotorState[i].speed;
@@ -260,7 +265,7 @@ static void chk_dome_speed(SSL *ssl){
         if(sl_dtime() - tlast < G.speedchk_interval) return;
         DBG("Time - tlast = %g", sl_dtime() - tlast);
         tlast = sl_dtime();
-        if(fabs(CommonState.speed - fabs(set_speed)) < SPEED_TOLERANCE){
+        if(fabs(CommonState.speed - set_speed) < SPEED_TOLERANCE){
             return;
         }
         DBG("Speed set command still not sent");
@@ -305,7 +310,11 @@ static void chk_dome_speed(SSL *ssl){
 
 // SHM parser; return FALSE if SHM is in erroreous state
 static int process_system(SSL *ssl){
-    static int curMotNo = 0; // current motor number (we'll scan all 10 motors by one)
+    static int curMotNo = -1; // current motor number (we'll scan all 10 motors by one)
+    if(curMotNo == -1){ // pass first run, wait for M_time initialized
+        curMotNo = 0;
+        return TRUE;
+    }
     double curtime = sl_dtime();
     // check time sync
     static int brokenshmctr = 0;
@@ -429,6 +438,7 @@ void clientproc(SSL_CTX *ctx, int fd){
             LOGDBG("Received: \"%s\"", buf);
         }else if(bytes < 0){
             LOGERR("Server disconnected or other error");
+            break;
         }
         usleep(100000);
     }
@@ -454,8 +464,9 @@ void terminal(SSL_CTX *ctx, int fd){
         if(sl_canread(0)){
             ssize_t L = getline(&lptr, &N, stdin);
             if(L < 0) break; // ctrl + D
-            if(L > (ssize_t)(sizeof(buf)-1)) WARNX("String too long!");
-            else if(L > 0){
+            //if(L > (ssize_t)(sizeof(buf)-1)) WARNX("String too long!");
+            //else
+            if(L > 0){
                 if(!write_string(ssl, lptr)) break; // error
             }
         }
@@ -473,5 +484,6 @@ void terminal(SSL_CTX *ctx, int fd){
         }
     }
     FREE(lptr);
+    SSL_shutdown(ssl);
     SSL_free(ssl);
 }

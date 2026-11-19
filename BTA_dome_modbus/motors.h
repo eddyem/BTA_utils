@@ -43,8 +43,8 @@
 // log-file prefix length
 #define MAX_LOGPREFIX_LEN   31
 
-// modbus responce timeout, ms
-#define MODBUS_RESPONCE_TIMEOUT 100000
+// modbus response timeout, mks
+#define MODBUS_RESPONSE_TIMEOUT 100000
 
 // ID of first motor
 #define START_ID        (1)
@@ -60,9 +60,9 @@ enum{
 };
 
 typedef struct{
-    int status;
-    double speed;
-    double current;
+    int status;     // one of MOT_xxx statuses
+    double speed;   // current speed with sign (RPM)
+    double current; // current current (A)
 } motor_state_t;
 
 double motors_get_curntsetpoint();

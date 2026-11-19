@@ -104,7 +104,7 @@ static int motors_open_m(const char *path, int speed){
         LOGERR("Can't open device %s @ %d", path, speed);
         return FALSE;
     }
-    modbus_set_response_timeout(modbus_ctx, 0, MODBUS_RESPONCE_TIMEOUT); // response timeout
+    modbus_set_response_timeout(modbus_ctx, 0, MODBUS_RESPONSE_TIMEOUT); // response timeout
     if(modbus_connect(modbus_ctx) < 0){
         WARNX("Can't connect to device %s", path);
         LOGERR("Can't connect to device %s", path);
@@ -147,12 +147,14 @@ int motors_set_curntsetpoint(double val){
 
 // get setpoint of speed
 double motors_get_speedsetpoint(){
-    return speedSet;
+    pthread_mutex_lock(&statemutex);
+    double spd = speedSet;
+    pthread_mutex_unlock(&statemutex);
+    return spd;
 }
 // set setpoint of speed (rev/min)
 sl_sock_hresult_e motors_set_speedsetpoint(double val){
-    double absval = fabs(val);
-    if(absval > MAX_SPEED){
+    if(fabs(val) > MAX_SPEED){
         DBG("Speed to large");
         return RESULT_BADVAL;
     }
@@ -258,10 +260,10 @@ static void motors_process_m(){
             if(fabs(speedSet) < SPEED_TOLERANCE){ // stop motor
                 modbus_write_register(modbus_ctx, REG_CMD, CMD_STOP);
             }else{ // send command "set speed"
-                uint16_t dir = (speedSet > 0.) ? CMD_FORWARD : CMD_REVERSE;
                 uint16_t freq = REVMIN2FREQ(fabs(speedSet));
-                modbus_write_register(modbus_ctx, REG_CMD, dir);
                 modbus_write_register(modbus_ctx, REG_FREQ_SET, freq);
+                uint16_t dir = (speedSet > 0.) ? CMD_FORWARD : CMD_REVERSE;
+                modbus_write_register(modbus_ctx, REG_CMD, dir);
             }
             flags.change_speed = 0;
         }
@@ -293,9 +295,12 @@ static void motors_process_m(){
     }
     DBG("motor %d; status: %x, extstatus: %x", curN, regs[0], regs[1]);
     error_cnt[curN] = 0;
+    double rotdir = 1.;
     switch(regs[0]){
-        case STATUS_CW:
         case STATUS_CCW:
+            rotdir = -1.;
+            // fallthrough
+        case STATUS_CW:
             DBG("status: RUN");
             motstates[curN].status = MOT_RUN;
             break;
@@ -317,7 +322,7 @@ static void motors_process_m(){
     }
     if(-1 == modbus_read_registers(modbus_ctx, REG_OUTPUT_FREQ, 1, &regs[0])) regs[0] = 0;
     if(-1 == modbus_read_registers(modbus_ctx, REG_OUTPUT_CURRENT, 1, &regs[1])) regs[1] = 0;
-    motstates[curN].speed = FREQ2REVMIN(regs[0]);
+    motstates[curN].speed = rotdir * FREQ2REVMIN(regs[0]);
     motstates[curN].current = ((double)regs[1]) / CURRENT_SCALE;
     // Logging
     log_data(curN);
@@ -346,6 +351,7 @@ static void motors_process_e(){
         }
         flags.all = 0;
     }
+    // both curspeed and speedSet are signed
     if(fabs(curspeed - speedSet) > SPEED_TOLERANCE){ // need to calculate new speed value
         double acceleration = (curspeed < speedSet) ? EMUL_ACCEL : -EMUL_ACCEL;
         double newspeed = curspeed + acceleration * dt / 60.; // acceleration in min^{-2}
@@ -364,10 +370,10 @@ static void motors_process_e(){
     }
     t0 = curt;
     for(int i = 0; i < MOTORS_AMOUNT; ++i){
-        log_data(i);
         motstates[i].status = curstatus;
         motstates[i].current = curcurrent;
         motstates[i].speed = curspeed;
+        log_data(i);
     }
     pthread_mutex_unlock(&statemutex);
 }
@@ -409,12 +415,12 @@ int start_log(){
     for(int i = 0; i < MOTORS_AMOUNT; ++i){
         if(logF[i]) fclose(logF[i]);
         snprintf(buf, PATH_MAX, "%s/%s_%02d.log", G.motlogdir, logprefix, i);
-        logF[i] = fopen(buf, "a");
+        logF[i] = fopen(buf, "w");
         if(!logF[i]) ++errctr;
     }
     pthread_mutex_unlock(&logmutex);
-    Tstart = sl_dtime();
     if(errctr == MOTORS_AMOUNT) return FALSE;
+    Tstart = sl_dtime();
     return TRUE;
 }
 
